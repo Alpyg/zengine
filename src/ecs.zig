@@ -56,17 +56,6 @@ pub fn create(comptime Components: type, comptime Systems: type) type {
             }
         }
 
-        // const system_fn = fn () void;
-
-        // fn Run(comptime T: type) type {
-        //     return struct {
-        //         fn run(w: *zflecs.world_t) void {
-        //             // @compileLog(T.run);
-        //             T.run(w);
-        //         }
-        //     };
-        // }
-
         fn deinitSystems(comptime T: type) void {
             if (isSystem(T)) {
                 if (@hasDecl(T, "deinit")) T.deinit();
@@ -130,6 +119,41 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     };
 }
 
+pub fn System(comptime S: anytype) type {
+    if (!@hasDecl(S, "name")) @compileError("expected system to have a name declaration");
+    if (!@hasDecl(S, "phase")) @compileError("expected system to have a phase declaration");
+
+    const param_types = @typeInfo(@TypeOf(S.run)).@"fn".params;
+
+    return struct {
+        pub const name = S.name;
+        pub const phase = S.phase;
+
+        const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
+        var args_tuple: ArgsTupleType = undefined;
+
+        pub fn init(world: *zflecs.world_t) !void {
+            inline for (param_types, 0..) |param, i| {
+                const Param = param.type.?;
+                var param_: Param = .{};
+                try param_.init(world);
+
+                args_tuple[i] = param_;
+            }
+        }
+
+        pub fn deinit() void {
+            inline for (@typeInfo(ArgsTupleType).@"struct".fields) |arg| {
+                if (@hasDecl(arg.type, "deinit")) @field(args_tuple, arg.name).deinit();
+            }
+        }
+
+        pub fn run(_: *zflecs.iter_t) void {
+            @call(.auto, S.run, args_tuple);
+        }
+    };
+}
+
 fn assertIsTuple(comptime T: anytype) void {
     const info = @typeInfo(T);
     if (info != .@"struct" or info.@"struct".is_tuple == false) {
@@ -146,46 +170,26 @@ test "ecs system" {
     };
 
     const Systems = struct {
-        pub const TestSystem = struct {
+        pub const TestSystem = System(struct {
             pub const name = "test system";
             pub const phase = &zflecs.OnLoad;
 
-            var init_called: bool = false;
-            var run_called: bool = false;
-            var deinit_called: bool = false;
-
-            var counter_query: Query(.{Components.Counter}, .{Components.Tag}) = undefined;
-
-            pub fn init(world: *zflecs.world_t) !void {
-                try counter_query.init(world);
-
-                init_called = true;
-            }
-
-            pub fn deinit() void {
-                counter_query.deinit();
-
-                deinit_called = true;
-            }
-
-            pub fn run(_: *zflecs.iter_t) void {
-                var counter_it = zflecs.query_iter(z.world, counter_query.query);
+            pub fn run(query: Query(.{Components.Counter}, .{})) void {
+                var q = query;
+                var counter_it = q.iter();
                 while (zflecs.iter_next(&counter_it)) {
                     const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
                     for (counters) |*counter| {
                         counter.*.value += 1;
                     }
                 }
-
-                run_called = true;
             }
-        };
+        });
     };
 
     const ECS = create(Components, Systems);
 
     try ECS.init();
-    try expect(Systems.TestSystem.init_called);
 
     const entity = zflecs.new_entity(z.world, "Test Entity");
     _ = zflecs.set(z.world, entity, Components.Counter, .{});
@@ -198,9 +202,8 @@ test "ecs system" {
     for (0..iterations) |_| {
         ECS.progress();
     }
-    try expect(Systems.TestSystem.run_called);
 
-    var counter_it = zflecs.query_iter(z.world, Systems.TestSystem.counter_query.query);
+    var counter_it = zflecs.query_iter(z.world, Systems.TestSystem.args_tuple[0].query);
     while (zflecs.iter_next(&counter_it)) {
         const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
         for (counters) |counter| {
@@ -209,5 +212,4 @@ test "ecs system" {
     }
 
     ECS.deinit();
-    try expect(Systems.TestSystem.deinit_called);
 }
