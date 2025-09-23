@@ -103,13 +103,16 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
             var count: usize = 0;
 
             inline for (components_info.fields) |component| {
-                terms[count] = zflecs.term_t{ .id = zflecs.id(component.type) };
+                const T = @field(Components, component.name);
+                terms[count] = zflecs.term_t{ .id = zflecs.id(T) };
                 count += 1;
             }
 
             inline for (filters_info.fields) |filter| {
-                terms[count] = filter.toTerm();
-                count += 1;
+                _ = filter; // autofix
+                // const T = @field(Components, filter.name);
+                // terms[count] = filter.toTerm();
+                // count += 1;
             }
 
             self.query = try zflecs.query_init(world, &.{ .terms = terms });
@@ -118,6 +121,7 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
 
         pub fn deinit(self: *@This()) void {
             zflecs.query_fini(self.query);
+            self.query = undefined;
         }
 
         pub fn iter(self: *@This()) zflecs.iter_t {
@@ -125,9 +129,6 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
         }
     };
 }
-
-pub const With = zflecs.With;
-pub const Without = zflecs.Without;
 
 fn assertIsTuple(comptime T: anytype) void {
     const info = @typeInfo(T);
@@ -140,8 +141,8 @@ test "ecs system" {
     const expect = std.testing.expect;
 
     const Components = struct {
-        pub const Counter = usize;
-        pub const Tag = usize;
+        pub const Counter = struct { value: usize = 0 };
+        pub const Tag = struct {};
     };
 
     const Systems = struct {
@@ -153,29 +154,26 @@ test "ecs system" {
             var run_called: bool = false;
             var deinit_called: bool = false;
 
-            var counter_query: *zflecs.query_t = undefined;
+            var counter_query: Query(.{Components.Counter}, .{Components.Tag}) = undefined;
 
             pub fn init(world: *zflecs.world_t) !void {
-                var counter_terms: [32]zflecs.term_t = [_]zflecs.term_t{.{}} ** zflecs.FLECS_TERM_COUNT_MAX;
-                counter_terms[0] = zflecs.term_t{ .id = zflecs.id(Components.Counter) };
-                counter_query = try zflecs.query_init(world, &.{ .terms = counter_terms });
+                try counter_query.init(world);
 
                 init_called = true;
             }
 
             pub fn deinit() void {
-                // counter_query.deinit();
-                zflecs.query_fini(counter_query);
+                counter_query.deinit();
 
                 deinit_called = true;
             }
 
             pub fn run(_: *zflecs.iter_t) void {
-                var counter_it = zflecs.query_iter(z.world, counter_query);
+                var counter_it = zflecs.query_iter(z.world, counter_query.query);
                 while (zflecs.iter_next(&counter_it)) {
                     const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
                     for (counters) |*counter| {
-                        counter.* += 1;
+                        counter.*.value += 1;
                     }
                 }
 
@@ -190,7 +188,7 @@ test "ecs system" {
     try expect(Systems.TestSystem.init_called);
 
     const entity = zflecs.new_entity(z.world, "Test Entity");
-    _ = zflecs.set(z.world, entity, Components.Counter, 0);
+    _ = zflecs.set(z.world, entity, Components.Counter, .{});
 
     // const entity_tagged = zflecs.new_entity(z.world, "Test Entity Tagged");
     // _ = zflecs.set(z.world, entity_tagged, Components.Counter, 0);
@@ -202,11 +200,11 @@ test "ecs system" {
     }
     try expect(Systems.TestSystem.run_called);
 
-    var counter_it = zflecs.query_iter(z.world, Systems.TestSystem.counter_query);
+    var counter_it = zflecs.query_iter(z.world, Systems.TestSystem.counter_query.query);
     while (zflecs.iter_next(&counter_it)) {
         const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
         for (counters) |counter| {
-            try expect(counter == iterations);
+            try expect(counter.value == iterations);
         }
     }
 

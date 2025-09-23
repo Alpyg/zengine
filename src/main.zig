@@ -2,7 +2,9 @@ const std = @import("std");
 const z = @import("z");
 
 const game = z.create(
-    struct {},
+    struct {
+        pub const Counter = usize;
+    },
     @import("ecs/systems.zig"),
 );
 
