@@ -83,6 +83,10 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     const components_info = @typeInfo(@TypeOf(Components)).@"struct";
     const filters_info = @typeInfo(@TypeOf(Filters)).@"struct";
 
+    if (components_info.fields.len == 0) {
+        @compileError("Expected at least one component in query ");
+    }
+
     var ComponentTypes: [components_info.fields.len]type = undefined;
     inline for (components_info.fields, 0..) |component, i| {
         const T = @field(Components, component.name);
