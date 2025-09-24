@@ -17,8 +17,6 @@ pub var allocator: std.mem.Allocator = undefined;
 pub var window: *zglfw.Window = undefined;
 pub var gctx: *zgpu.GraphicsContext = undefined;
 
-pub var world: *zflecs.world_t = undefined;
-
 pub var encoder: wgpu.CommandEncoder = undefined;
 
 pub var debug_texture: zgpu.TextureHandle = undefined;
