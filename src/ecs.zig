@@ -117,10 +117,9 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
             }
 
             inline for (filters_info.fields) |filter| {
-                _ = filter; // autofix
-                // const T = @field(Components, filter.name);
-                // terms[count] = filter.toTerm();
-                // count += 1;
+                const T = @field(Filters, filter.name);
+                terms[count] = T.term();
+                count += 1;
             }
 
             return Self{
@@ -136,6 +135,22 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
 
         pub fn iter(self: *const Self) Iter {
             return Iter.init(self.world, self.query);
+        }
+    };
+}
+
+pub fn With(comptime Component: type) type {
+    return struct {
+        pub fn term() zflecs.term_t {
+            return zflecs.term_t{ .id = zflecs.id(Component), .inout = .In };
+        }
+    };
+}
+
+pub fn Without(comptime Component: type) type {
+    return struct {
+        pub fn term() zflecs.term_t {
+            return zflecs.term_t{ .id = zflecs.id(Component), .inout = .InOutNone, .oper = .Not };
         }
     };
 }
@@ -160,8 +175,7 @@ fn QueryIter(comptime ComponentTypes: anytype) type {
         tables: ComponentsTable = undefined,
 
         pub fn init(world: *zflecs.world_t, query: *zflecs.query_t) Self {
-            const it = zflecs.query_iter(world, query);
-            return Self{ .it = it };
+            return Self{ .it = zflecs.query_iter(world, query) };
         }
 
         pub fn next(self: *Self) ?Components {
@@ -248,17 +262,17 @@ test "ecs system" {
             pub const phase = &zflecs.OnLoad;
 
             pub fn run(
-                q_counter: Query(.{Components.Counter}, .{}),
-                q_tag: Query(.{Components.Tag}, .{}),
+                q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
+                q_counter_tag: Query(.{Components.Counter}, .{With(Components.Tag)}),
             ) void {
                 var counter_it = q_counter.iter();
                 while (counter_it.next()) |counter| {
                     counter[0].value += 1;
                 }
 
-                var tag_it = q_tag.iter();
-                while (tag_it.next()) |tag| {
-                    tag[0].value += 2;
+                var counter_tag_it = q_counter_tag.iter();
+                while (counter_tag_it.next()) |counter_tag| {
+                    counter_tag[0].value += 2;
                 }
             }
         });
@@ -281,13 +295,13 @@ test "ecs system" {
         ECS.progress();
     }
 
-    var counter_q = try Query(.{Components.Counter}, .{}).init(z.world);
+    var counter_q = try Query(.{Components.Counter}, .{Without(Components.Tag)}).init(z.world);
     var counter_it = counter_q.iter();
     while (counter_it.next()) |counter| {
         try expect(counter[0].value == iterations);
     }
 
-    var tag_q = try Query(.{Components.Tag}, .{}).init(z.world);
+    var tag_q = try Query(.{Components.Counter}, .{With(Components.Tag)}).init(z.world);
     var tag_it = tag_q.iter();
     while (tag_it.next()) |tag| {
         try expect(tag[0].value == iterations * 2);
