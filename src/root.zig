@@ -10,6 +10,9 @@ pub const ecs = @import("ecs.zig");
 pub const gfx = @import("gfx.zig");
 pub const input = @import("input.zig");
 
+pub const System = ecs.System;
+pub const Query = ecs.Query;
+
 pub var allocator: std.mem.Allocator = undefined;
 pub var window: *zglfw.Window = undefined;
 pub var gctx: *zgpu.GraphicsContext = undefined;

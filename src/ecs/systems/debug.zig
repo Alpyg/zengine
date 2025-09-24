@@ -9,13 +9,15 @@ const zglfw = @import("z").zglfw;
 const zgpu = @import("z").zgpu;
 const zgui = @import("z").zgui;
 
-pub const DebugToggleSystem = struct {
+const System = @import("z").System;
+
+pub const DebugToggleSystem = System(struct {
     pub const name = "debug toggle system";
     pub const phase = &ecs.PreUpdate;
 
     var cursor_disabled: bool = false;
 
-    pub fn run(_: *ecs.iter_t) void {
+    pub fn run() void {
         if (input.getKey(.escape).just_pressed) {
             // z.debug = !z.debug;
             // gfx.refreshRenderTargets();
@@ -65,13 +67,13 @@ pub const DebugToggleSystem = struct {
 
         zgui.popStyleVar(.{ .count = 2 });
     }
-};
+});
 
-pub const DebugUIViewportSystem = struct {
+pub const DebugUIViewportSystem = System(struct {
     pub const name = "debug ui viewport system";
     pub const phase = &ecs.OnUpdate;
 
-    pub fn run(_: *ecs.iter_t) void {
+    pub fn run() void {
         if (zgui.begin("Main", .{})) {
             if (zgui.begin("Viewport", .{})) {
                 const avail = zgui.getContentRegionAvail();
@@ -83,13 +85,13 @@ pub const DebugUIViewportSystem = struct {
         }
         zgui.end();
     }
-};
+});
 
-pub const DebugUIRenderSystem = struct {
+pub const DebugUIRenderSystem = System(struct {
     pub const name = "debug ui render system";
     pub const phase = &ecs.OnStore;
 
-    pub fn run(_: *ecs.iter_t) void {
+    pub fn run() void {
         if (!z.debug) {
             zgui.endFrame();
             return;
@@ -126,4 +128,4 @@ pub const DebugUIRenderSystem = struct {
 
         zgui.backend.draw(pass);
     }
-};
+});

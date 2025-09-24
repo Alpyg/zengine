@@ -2,9 +2,7 @@ const std = @import("std");
 const z = @import("z");
 
 const game = z.create(
-    struct {
-        pub const Counter = usize;
-    },
+    @import("ecs/components.zig"),
     @import("ecs/systems.zig"),
 );
 
@@ -16,6 +14,9 @@ pub fn main() !void {
 
     try game.init(allocator);
     defer game.deinit();
+
+    // const entity = z.zflecs.new_entity(z.world, "Test Entity");
+    // _ = z.zflecs.set(z.world, entity, Components.Counter, .{});
 
     while (!z.window.shouldClose()) {
         try game.run();

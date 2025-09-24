@@ -30,10 +30,10 @@ pub fn create(comptime Components: type, comptime Systems: type) type {
                 if (@TypeOf(Child) == type) {
                     if (@sizeOf(Child) > 0) {
                         zflecs.COMPONENT(z.world, Child);
-                        std.log.debug("registered component `{s}`", .{decl.name});
+                        std.log.debug("Registered component `{s}`", .{decl.name});
                     } else {
                         zflecs.TAG(z.world, Child);
-                        std.log.debug("registered tag `{s}`", .{decl.name});
+                        std.log.debug("Registered tag `{s}`", .{decl.name});
                     }
                 }
             }
@@ -42,7 +42,7 @@ pub fn create(comptime Components: type, comptime Systems: type) type {
         fn registerSystems(comptime T: type) !void {
             if (isSystem(T)) {
                 _ = zflecs.ADD_SYSTEM(z.world, T.name, T.phase.*, T.run);
-                std.log.debug("registered system `{s}`", .{T.name});
+                std.log.debug("Registered system `{s}`", .{T.name});
 
                 if (@hasDecl(T, "init")) try T.init(z.world);
             } else {
@@ -83,17 +83,36 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     const components_info = @typeInfo(@TypeOf(Components)).@"struct";
     const filters_info = @typeInfo(@TypeOf(Filters)).@"struct";
 
-    return struct {
-        query: *zflecs.query_t = undefined,
-        world: *zflecs.world_t = undefined,
+    var ComponentTypes: [components_info.fields.len]type = undefined;
+    inline for (components_info.fields, 0..) |component, i| {
+        const T = @field(Components, component.name);
 
-        pub fn init(self: *@This(), world: *zflecs.world_t) !void {
+        switch (@typeInfo(T)) {
+            .pointer => |p| ComponentTypes[i] = []p.child,
+            .@"struct" => ComponentTypes[i] = []T,
+            else => @compileError("Expected struct, pointer or optional component"),
+        }
+    }
+    const Iter = QueryIter(ComponentTypes);
+
+    return struct {
+        const Self = @This();
+
+        world: *zflecs.world_t = undefined,
+        query: *zflecs.query_t = undefined,
+
+        pub fn init(world: *zflecs.world_t) !Self {
             var terms: [32]zflecs.term_t = [_]zflecs.term_t{.{}} ** zflecs.FLECS_TERM_COUNT_MAX;
             var count: usize = 0;
 
             inline for (components_info.fields) |component| {
                 const T = @field(Components, component.name);
-                terms[count] = zflecs.term_t{ .id = zflecs.id(T) };
+                const inout = if (@typeInfo(T) == .pointer and @typeInfo(T).pointer.is_const) .InOut else .In;
+                switch (@typeInfo(T)) {
+                    .pointer => |p| terms[count] = zflecs.term_t{ .id = zflecs.id(p.child), .inout = inout },
+                    .@"struct" => terms[count] = zflecs.term_t{ .id = zflecs.id(T), .inout = inout },
+                    else => @compileError("Expected struct, pointer or optional component"),
+                }
                 count += 1;
             }
 
@@ -104,24 +123,76 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
                 // count += 1;
             }
 
-            self.query = try zflecs.query_init(world, &.{ .terms = terms });
-            self.world = world;
+            return Self{
+                .world = world,
+                .query = try zflecs.query_init(world, &.{ .terms = terms }),
+            };
         }
 
-        pub fn deinit(self: *@This()) void {
+        pub fn deinit(self: *Self) void {
             zflecs.query_fini(self.query);
             self.query = undefined;
         }
 
-        pub fn iter(self: *@This()) zflecs.iter_t {
-            return zflecs.query_iter(self.world, self.query);
+        pub fn iter(self: *const Self) Iter {
+            return Iter.init(self.world, self.query);
+        }
+    };
+}
+
+fn QueryIter(comptime ComponentTypes: anytype) type {
+    var ComponentsType: [ComponentTypes.len]type = undefined;
+    inline for (ComponentTypes, 0..) |T, i| {
+        switch (@typeInfo(T)) {
+            .pointer => |p| ComponentsType[i] = *p.child,
+            .@"struct" => ComponentsType[i] = *T,
+            else => @compileError("Expected struct, pointer or optional component"),
+        }
+    }
+    const ComponentsTable = std.meta.Tuple(&ComponentTypes);
+    const Components = std.meta.Tuple(&ComponentsType);
+
+    return struct {
+        const Self = @This();
+
+        it: zflecs.iter_t,
+        index: usize = 0,
+        tables: ComponentsTable = undefined,
+
+        pub fn init(world: *zflecs.world_t, query: *zflecs.query_t) Self {
+            const it = zflecs.query_iter(world, query);
+            return Self{ .it = it };
+        }
+
+        pub fn next(self: *Self) ?Components {
+            if (self.index >= self.tables[0].len) {
+                if (!zflecs.iter_next(&self.it)) return null;
+                self.index = 0;
+
+                inline for (ComponentTypes, 0..) |T, i| {
+                    switch (@typeInfo(T)) {
+                        .pointer => |p| self.tables[i] = zflecs.field(&self.it, p.child, i).?,
+                        .@"struct" => self.tables[i] = zflecs.field(&self.it, T, i).?,
+                        else => @compileError("Expected struct, pointer or optional component"),
+                    }
+                }
+            }
+
+            defer self.index += 1;
+
+            var components: Components = undefined;
+            inline for (0..ComponentTypes.len) |col| {
+                components[col] = &self.tables[col][self.index];
+            }
+
+            return components;
         }
     };
 }
 
 pub fn System(comptime S: anytype) type {
-    if (!@hasDecl(S, "name")) @compileError("expected system to have a name declaration");
-    if (!@hasDecl(S, "phase")) @compileError("expected system to have a phase declaration");
+    if (!@hasDecl(S, "name")) @compileError("Expected system to have a name declaration");
+    if (!@hasDecl(S, "phase")) @compileError("Expected system to have a phase declaration");
 
     const param_types = @typeInfo(@TypeOf(S.run)).@"fn".params;
 
@@ -134,17 +205,19 @@ pub fn System(comptime S: anytype) type {
 
         pub fn init(world: *zflecs.world_t) !void {
             inline for (param_types, 0..) |param, i| {
-                const Param = param.type.?;
-                var param_: Param = .{};
-                try param_.init(world);
+                if (@typeInfo(param.type.?) != .@"struct" or !@hasDecl(param.type.?, "init")) {
+                    continue;
+                }
 
-                args_tuple[i] = param_;
+                args_tuple[i] = try param.type.?.init(world);
             }
         }
 
         pub fn deinit() void {
             inline for (@typeInfo(ArgsTupleType).@"struct".fields) |arg| {
-                if (@hasDecl(arg.type, "deinit")) @field(args_tuple, arg.name).deinit();
+                if (@typeInfo(arg.type) == .@"struct" and @hasDecl(arg.type, "deinit")) {
+                    @field(args_tuple, arg.name).deinit();
+                }
             }
         }
 
@@ -157,7 +230,7 @@ pub fn System(comptime S: anytype) type {
 fn assertIsTuple(comptime T: anytype) void {
     const info = @typeInfo(T);
     if (info != .@"struct" or info.@"struct".is_tuple == false) {
-        @compileError("expected a tuple type");
+        @compileError("Expected a tuple type");
     }
 }
 
@@ -166,7 +239,7 @@ test "ecs system" {
 
     const Components = struct {
         pub const Counter = struct { value: usize = 0 };
-        pub const Tag = struct {};
+        pub const Tag = struct { value: usize = 0 };
     };
 
     const Systems = struct {
@@ -174,14 +247,18 @@ test "ecs system" {
             pub const name = "test system";
             pub const phase = &zflecs.OnLoad;
 
-            pub fn run(query: Query(.{Components.Counter}, .{})) void {
-                var q = query;
-                var counter_it = q.iter();
-                while (zflecs.iter_next(&counter_it)) {
-                    const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
-                    for (counters) |*counter| {
-                        counter.*.value += 1;
-                    }
+            pub fn run(
+                q_counter: Query(.{Components.Counter}, .{}),
+                q_tag: Query(.{Components.Tag}, .{}),
+            ) void {
+                var counter_it = q_counter.iter();
+                while (counter_it.next()) |counter| {
+                    counter[0].value += 1;
+                }
+
+                var tag_it = q_tag.iter();
+                while (tag_it.next()) |tag| {
+                    tag[0].value += 2;
                 }
             }
         });
@@ -190,26 +267,29 @@ test "ecs system" {
     const ECS = create(Components, Systems);
 
     try ECS.init();
+    defer ECS.deinit();
 
     const entity = zflecs.new_entity(z.world, "Test Entity");
     _ = zflecs.set(z.world, entity, Components.Counter, .{});
 
-    // const entity_tagged = zflecs.new_entity(z.world, "Test Entity Tagged");
-    // _ = zflecs.set(z.world, entity_tagged, Components.Counter, 0);
-    // _ = zflecs.set(z.world, entity_tagged, Components.Tag, 0);
+    const entity_tagged = zflecs.new_entity(z.world, "Test Entity Tagged");
+    _ = zflecs.set(z.world, entity_tagged, Components.Counter, .{});
+    _ = zflecs.set(z.world, entity_tagged, Components.Tag, .{});
 
     const iterations = 5;
     for (0..iterations) |_| {
         ECS.progress();
     }
 
-    var counter_it = zflecs.query_iter(z.world, Systems.TestSystem.args_tuple[0].query);
-    while (zflecs.iter_next(&counter_it)) {
-        const counters = zflecs.field(&counter_it, Components.Counter, 0).?;
-        for (counters) |counter| {
-            try expect(counter.value == iterations);
-        }
+    var counter_q = try Query(.{Components.Counter}, .{}).init(z.world);
+    var counter_it = counter_q.iter();
+    while (counter_it.next()) |counter| {
+        try expect(counter[0].value == iterations);
     }
 
-    ECS.deinit();
+    var tag_q = try Query(.{Components.Tag}, .{}).init(z.world);
+    var tag_it = tag_q.iter();
+    while (tag_it.next()) |tag| {
+        try expect(tag[0].value == iterations * 2);
+    }
 }
