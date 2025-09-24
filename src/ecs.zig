@@ -165,7 +165,7 @@ fn QueryIter(comptime ComponentTypes: anytype) type {
         }
     }
     const ComponentsTable = std.meta.Tuple(&ComponentTypes);
-    const Components = std.meta.Tuple(&ComponentsType);
+    const Components = if (ComponentTypes.len > 1) std.meta.Tuple(&ComponentsType) else ComponentsType[0];
 
     return struct {
         const Self = @This();
@@ -176,6 +176,10 @@ fn QueryIter(comptime ComponentTypes: anytype) type {
 
         pub fn init(world: *zflecs.world_t, query: *zflecs.query_t) Self {
             return Self{ .it = zflecs.query_iter(world, query) };
+        }
+
+        pub fn count(self: *Self) usize {
+            return self.it.count();
         }
 
         pub fn next(self: *Self) ?Components {
@@ -196,7 +200,11 @@ fn QueryIter(comptime ComponentTypes: anytype) type {
 
             var components: Components = undefined;
             inline for (0..ComponentTypes.len) |col| {
-                components[col] = &self.tables[col][self.index];
+                if (ComponentTypes.len > 1) {
+                    components[col] = &self.tables[col][self.index];
+                } else {
+                    components = &self.tables[col][self.index];
+                }
             }
 
             return components;
@@ -267,12 +275,12 @@ test "ecs system" {
             ) void {
                 var counter_it = q_counter.iter();
                 while (counter_it.next()) |counter| {
-                    counter[0].value += 1;
+                    counter.value += 1;
                 }
 
                 var counter_tag_it = q_counter_tag.iter();
                 while (counter_tag_it.next()) |counter_tag| {
-                    counter_tag[0].value += 2;
+                    counter_tag.value += 2;
                 }
             }
         });
@@ -298,12 +306,12 @@ test "ecs system" {
     var counter_q = try Query(.{Components.Counter}, .{Without(Components.Tag)}).init(z.world);
     var counter_it = counter_q.iter();
     while (counter_it.next()) |counter| {
-        try expect(counter[0].value == iterations);
+        try expect(counter.value == iterations);
     }
 
     var tag_q = try Query(.{Components.Counter}, .{With(Components.Tag)}).init(z.world);
     var tag_it = tag_q.iter();
     while (tag_it.next()) |tag| {
-        try expect(tag[0].value == iterations * 2);
+        try expect(tag.value == iterations * 2);
     }
 }
