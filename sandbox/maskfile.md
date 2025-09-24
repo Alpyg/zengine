@@ -3,11 +3,6 @@
 anyzig build run
 ```
 
-## sandbox
-```sh
-cd sandbox && anyzig build run
-```
-
 ## test
 ```sh
 anyzig build test --summary all  

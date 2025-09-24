@@ -1,4 +1,4 @@
-/.zig-cache
-/zig-out
-/assets
+**/.zig-cache
+**/zig-out
+**/assets
 imgui.ini

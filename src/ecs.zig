@@ -10,6 +10,7 @@ const Without = @import("ecs/query.zig").Without;
 pub fn create(comptime Components: type, comptime Systems: type) type {
     return struct {
         const Self = @This();
+
         world: *zflecs.world_t = undefined,
 
         pub fn init() !Self {

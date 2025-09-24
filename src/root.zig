@@ -30,15 +30,17 @@ test {
     _ = ecs;
 }
 
-const Self = @This();
-
 pub fn create(
     comptime Components: type,
     comptime Systems: type,
 ) type {
     return struct {
+        const Self = @This();
         const ECS = ecs.create(Components, Systems);
-        pub fn init(allocator_: std.mem.Allocator) !void {
+
+        ecs: ECS = undefined,
+
+        pub fn init(allocator_: std.mem.Allocator) !Self {
             allocator = allocator_;
 
             try gfx.init();
@@ -57,26 +59,28 @@ pub fn create(
             zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
             zgui.getStyle().scaleAllSizes(1);
 
-            try ECS.init();
-
             gfx.refreshRenderTargets();
+
+            return Self{
+                .ecs = try ECS.init(),
+            };
         }
 
-        pub fn deinit() void {
+        pub fn deinit(self: *Self) void {
             defer gfx.deinit();
             defer input.deinit();
             defer zgui.deinit();
             defer zgui.backend.deinit();
-            defer ECS.deinit();
+            defer self.ecs.deinit();
         }
 
-        pub fn run() !void {
+        pub fn run(self: *Self) !void {
             zglfw.pollEvents();
 
             encoder = gctx.device.createCommandEncoder(null);
             defer encoder.release();
 
-            _ = ECS.progress();
+            _ = self.ecs.progress();
 
             const commands = encoder.finish(null);
             defer commands.release();

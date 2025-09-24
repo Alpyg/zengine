@@ -1,7 +1,8 @@
 const std = @import("std");
+
 const z = @import("z");
 
-const game = z.create(
+const Game = z.create(
     @import("ecs/components.zig"),
     @import("ecs/systems.zig"),
 );
@@ -12,11 +13,8 @@ pub fn main() !void {
 
     const allocator = gpa.allocator();
 
-    try game.init(allocator);
+    var game = try Game.init(allocator);
     defer game.deinit();
-
-    // const entity = z.zflecs.new_entity(z.world, "Test Entity");
-    // _ = z.zflecs.set(z.world, entity, Components.Counter, .{});
 
     while (!z.window.shouldClose()) {
         try game.run();
