@@ -1,22 +1,19 @@
 const std = @import("std");
 
 const z = @import("z");
-
-const Game = z.create(
-    @import("ecs/components.zig"),
-    @import("ecs/systems.zig"),
-);
+const Gfx = z.Gfx;
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
 
     const allocator = gpa.allocator();
+    z.allocator = allocator;
 
-    var game = try Game.init(allocator);
-    defer game.deinit();
+    var app = z.Ecs.init();
+    defer app.deinit();
 
-    while (!z.window.shouldClose()) {
-        try game.run();
-    }
+    _ = app.registerModule(Gfx{});
+
+    app.run();
 }

@@ -31,7 +31,7 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
         world: *zflecs.world_t = undefined,
         query: *zflecs.query_t = undefined,
 
-        pub fn init(world: *zflecs.world_t) !Self {
+        pub fn init(world: *zflecs.world_t) Self {
             var terms: [32]zflecs.term_t = [_]zflecs.term_t{.{}} ** zflecs.FLECS_TERM_COUNT_MAX;
             var count: usize = 0;
 
@@ -54,7 +54,7 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
 
             return Self{
                 .world = world,
-                .query = try zflecs.query_init(world, &.{ .terms = terms }),
+                .query = zflecs.query_init(world, &.{ .terms = terms }) catch |err| std.debug.panic("Failed to initialize query: {}", .{err}),
             };
         }
 
