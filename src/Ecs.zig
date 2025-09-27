@@ -2,24 +2,23 @@ const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-pub const Query = @import("ecs/Query.zig").Query;
-pub const With = @import("ecs/Query.zig").With;
-pub const Without = @import("ecs/Query.zig").Without;
-pub const Resource = @import("ecs/Resource.zig").Resource;
-pub const System = @import("ecs/System.zig").System;
+pub const Query = @import("ecs/query.zig").Query;
+pub const With = @import("ecs/query.zig").With;
+pub const Without = @import("ecs/query.zig").Without;
+pub const Resource = @import("ecs/resource.zig").Resource;
+pub const System = @import("ecs/system.zig").System;
 const z = @import("root.zig");
-
-test {
-    _ = @import("ecs/Query.zig");
-    _ = @import("ecs/Resource.zig");
-}
 
 const Ecs = @This();
 
 world: *zflecs.world_t = undefined,
+allocator: std.mem.Allocator = undefined,
 
-pub fn init() Ecs {
-    return Ecs{ .world = zflecs.init() };
+pub fn init(allocator: std.mem.Allocator) Ecs {
+    return Ecs{
+        .world = zflecs.init(),
+        .allocator = allocator,
+    };
 }
 
 pub fn deinit(self: *Ecs) void {
@@ -180,7 +179,9 @@ test "ecs system" {
         };
     };
 
-    var ecs = Ecs.init();
+    const allocator = std.testing.allocator;
+
+    var ecs = Ecs.init(allocator);
     defer ecs.deinit();
 
     _ = ecs.registerModule(Module{});

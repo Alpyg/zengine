@@ -1,20 +1,15 @@
 const std = @import("std");
 
 const wgpu = @import("zgpu").wgpu;
-const zflecs = @import("zflecs");
 const zglfw = @import("zglfw");
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 
-const Ecs = @import("Ecs.zig");
-const Query = @import("ecs/Query.zig").Query;
-const Resource = @import("ecs/Resource.zig").Resource;
-const System = @import("ecs/System.zig").System;
 const z = @import("root.zig");
+const Ecs = z.Ecs;
+const Resource = z.Resource;
+const System = z.System;
 
-// pub const Material = @import("gfx/material.zig").Material;
-// pub const Mesh = @import("gfx/mesh.zig").Mesh;
-// pub const RenderPipeline = @import("gfx/pipeline.zig").RenderPipeline;
 const Gfx = @This();
 
 window: *zglfw.Window = undefined,
@@ -37,7 +32,7 @@ pub fn init(ecs: *Ecs) void {
     self.window = zglfw.Window.create(1280, 720, "ZEngine", null) catch @panic("Failed to init window");
 
     const gctx = zgpu.GraphicsContext.create(
-        z.allocator,
+        ecs.allocator,
         .{
             .window = self.window,
             .fn_getTime = @ptrCast(&zglfw.getTime),
@@ -57,7 +52,7 @@ pub fn init(ecs: *Ecs) void {
     self.refreshRenderTargets();
 
     _ = ecs.registerResource(self);
-    _ = ecs.registerSystems(GfxSystems);
+    _ = ecs.registerSystems(Systems);
 }
 
 pub fn deinit(self: *Gfx) void {
@@ -72,7 +67,7 @@ pub fn getRenderTarget(self: *Gfx) wgpu.TextureView {
     return self.gctx.swapchain.getCurrentTextureView();
 }
 
-pub fn getRenderTargetSize(self: *Gfx) [2]u32 {
+pub fn getRenderTargetSize(self: *const Gfx) [2]u32 {
     if (self.debug) {
         const avail = blk: {
             defer zgui.end();
@@ -127,7 +122,9 @@ pub fn refreshRenderTargets(self: *Gfx) void {
     self.debug_texture_view = self.gctx.createTextureView(self.debug_texture, .{});
 }
 
-pub const GfxSystems = struct {
+const Systems = struct {
+    const zflecs = @import("zflecs");
+
     pub const PreRender = System(struct {
         pub const phase = &zflecs.OnStore;
 
