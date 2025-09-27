@@ -6,12 +6,12 @@ const zgui = @import("zgui");
 const z = @import("root.zig");
 const Ecs = z.Ecs;
 const Gfx = z.Gfx;
+const Pipeline = z.Pipeline;
 const Resource = z.Resource;
 const System = z.System;
-const Pipeline = z.Pipeline;
 
 pub fn init(ecs: *Ecs) void {
-    zgui.init(ecs.allocator);
+    zgui.init(z.allocator);
 
     _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
 
@@ -46,44 +46,6 @@ const Systems = struct {
                 gfx.gctx.swapchain_descriptor.width,
                 gfx.gctx.swapchain_descriptor.height,
             );
-
-            zgui.pushStyleVar1f(.{ .idx = zgui.StyleVar.window_rounding, .v = 0 });
-            zgui.pushStyleVar2f(.{ .idx = zgui.StyleVar.window_padding, .v = .{ 0, 0 } });
-
-            const main_viewport = zgui.getMainViewport();
-            zgui.setNextWindowPos(.{ .x = 0, .y = 0 });
-            zgui.setNextWindowSize(.{
-                .w = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
-                .h = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
-            });
-            zgui.setNextWindowViewport(main_viewport.getId());
-
-            if (zgui.begin("Dockspace", .{
-                .flags = .{
-                    .no_title_bar = true,
-                    .no_collapse = true,
-                    .no_resize = true,
-                    .no_move = true,
-                    .no_bring_to_front_on_focus = true,
-                    .no_nav_focus = true,
-                    .menu_bar = true,
-                },
-            })) {
-                _ = zgui.DockSpace("Dockspace", .{ 0, 0 }, .{});
-            }
-            zgui.end();
-
-            if (zgui.begin("Main", .{})) {
-                _ = zgui.DockSpace("MainDockspace", .{ 0, 0 }, .{});
-            }
-            zgui.end();
-
-            if (zgui.begin("Block", .{})) {
-                _ = zgui.DockSpace("BlockDockspace", .{ 0, 0 }, .{});
-            }
-            zgui.end();
-
-            zgui.popStyleVar(.{ .count = 2 });
         }
     });
 

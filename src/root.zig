@@ -13,6 +13,7 @@ pub const Pipeline = @import("Ecs.zig").Pipeline;
 pub const Query = @import("Ecs.zig").Query;
 pub const Resource = @import("Ecs.zig").Resource;
 pub const System = @import("Ecs.zig").System;
+pub const Input = @import("Input.zig");
 
 pub var allocator: std.mem.Allocator = undefined;
 

@@ -7,8 +7,8 @@ const zgui = @import("zgui");
 
 const z = @import("root.zig");
 const Ecs = z.Ecs;
-const Resource = z.Resource;
 const Pipeline = z.Pipeline;
+const Resource = z.Resource;
 const System = z.System;
 
 const Gfx = @This();
@@ -33,7 +33,7 @@ pub fn init(ecs: *Ecs) void {
     self.window = zglfw.Window.create(1280, 720, "ZEngine", null) catch @panic("Failed to init window");
 
     const gctx = zgpu.GraphicsContext.create(
-        ecs.allocator,
+        z.allocator,
         .{
             .window = self.window,
             .fn_getTime = @ptrCast(&zglfw.getTime),
@@ -47,13 +47,13 @@ pub fn init(ecs: *Ecs) void {
         },
         .{},
     ) catch @panic("Failed to initialize graphics context");
-    errdefer gctx.destroy(z.state.allocator);
+    errdefer gctx.destroy(z.allocator);
 
     self.gctx = gctx;
     self.refreshRenderTargets();
 
-    _ = ecs.registerResource(self);
-    _ = ecs.registerSystems(Systems);
+    _ = ecs.registerResource(self)
+        .registerSystems(Systems);
 }
 
 pub fn deinit(self: *Gfx) void {

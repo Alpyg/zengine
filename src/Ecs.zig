@@ -2,24 +2,20 @@ const std = @import("std");
 
 const zflecs = @import("zflecs");
 
+pub const Pipeline = @import("ecs/Pipeline.zig");
 pub const Query = @import("ecs/query.zig").Query;
 pub const With = @import("ecs/query.zig").With;
 pub const Without = @import("ecs/query.zig").Without;
 pub const Resource = @import("ecs/resource.zig").Resource;
 pub const System = @import("ecs/system.zig").System;
-pub const Pipeline = @import("ecs/Pipeline.zig");
 const z = @import("root.zig");
 
 const Ecs = @This();
 
 world: *zflecs.world_t = undefined,
-allocator: std.mem.Allocator = undefined,
 
-pub fn init(allocator: std.mem.Allocator) Ecs {
-    var self = Ecs{
-        .world = zflecs.init(),
-        .allocator = allocator,
-    };
+pub fn init() Ecs {
+    var self = Ecs{ .world = zflecs.init() };
 
     Pipeline.init(&self);
 
@@ -194,9 +190,7 @@ test "ecs system" {
         };
     };
 
-    const allocator = std.testing.allocator;
-
-    var ecs = Ecs.init(allocator);
+    var ecs = Ecs.init();
     defer ecs.deinit();
 
     _ = ecs.registerModule(Module{});
