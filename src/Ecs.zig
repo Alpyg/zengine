@@ -7,6 +7,7 @@ pub const With = @import("ecs/query.zig").With;
 pub const Without = @import("ecs/query.zig").Without;
 pub const Resource = @import("ecs/resource.zig").Resource;
 pub const System = @import("ecs/system.zig").System;
+pub const Pipeline = @import("ecs/Pipeline.zig");
 const z = @import("root.zig");
 
 const Ecs = @This();
@@ -15,10 +16,14 @@ world: *zflecs.world_t = undefined,
 allocator: std.mem.Allocator = undefined,
 
 pub fn init(allocator: std.mem.Allocator) Ecs {
-    return Ecs{
+    var self = Ecs{
         .world = zflecs.init(),
         .allocator = allocator,
     };
+
+    Pipeline.init(&self);
+
+    return self;
 }
 
 pub fn deinit(self: *Ecs) void {
@@ -141,6 +146,16 @@ fn deinitSystems(comptime T: type) void {
     }
 }
 
+pub fn registerPipeline(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
+    phase.* = zflecs.new_w_id(self.world, zflecs.Phase);
+
+    if (depends_on) |depended_on| {
+        zflecs.add_pair(self.world, phase.*, zflecs.DependsOn, depended_on);
+    }
+
+    return self;
+}
+
 test "ecs system" {
     const expect = std.testing.expect;
 
@@ -159,7 +174,7 @@ test "ecs system" {
 
         const Systems = struct {
             pub const TestSystem = System(struct {
-                pub const phase = &zflecs.OnLoad;
+                pub const phase = &Pipeline.Update;
 
                 pub fn run(
                     q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),

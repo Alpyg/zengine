@@ -8,6 +8,7 @@ const Ecs = z.Ecs;
 const Gfx = z.Gfx;
 const Resource = z.Resource;
 const System = z.System;
+const Pipeline = z.Pipeline;
 
 pub fn init(ecs: *Ecs) void {
     zgui.init(ecs.allocator);
@@ -36,7 +37,7 @@ pub fn deinit(_: *Ecs) void {
 
 const Systems = struct {
     pub const PreRender = System(struct {
-        pub const phase = &zflecs.PreUpdate;
+        pub const phase = &Pipeline.PreRender;
 
         pub fn run(r_gfx: Resource(Gfx)) void {
             const gfx = r_gfx.get();
@@ -87,7 +88,7 @@ const Systems = struct {
     });
 
     pub const Render = System(struct {
-        pub const phase = &zflecs.OnStore;
+        pub const phase = &Pipeline.PostRender;
 
         pub fn run(r_gfx: Resource(Gfx)) void {
             const gfx = r_gfx.get();

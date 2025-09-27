@@ -1,32 +1,29 @@
 const std = @import("std");
 
-const ecs = @import("z").zflecs;
-const gfx = @import("z").gfx;
-const input = @import("z").input;
+const Pipeline = @import("z").Pipeline;
+const Resource = @import("z").Resource;
+const System = @import("z").System;
 const wgpu = @import("z").wgpu;
 const z = @import("z");
-const zglfw = @import("z").zglfw;
-const zgpu = @import("z").zgpu;
+const zflecs = @import("z").zflecs;
 const zgui = @import("z").zgui;
 
-const System = @import("z").System;
-
 pub const DebugToggleSystem = System(struct {
-    pub const name = "debug toggle system";
-    pub const phase = &ecs.PreUpdate;
+    pub const phase = &Pipeline.PreRender;
 
     var cursor_disabled: bool = false;
 
-    pub fn run() void {
-        if (input.getKey(.escape).just_pressed) {
-            // z.debug = !z.debug;
-            // gfx.refreshRenderTargets();
-            input.toggleCursor();
-        }
+    pub fn run(res_gfx: Resource(z.Gfx)) void {
+        const gfx = res_gfx.get();
+        // if (input.getKey(.escape).just_pressed) {
+        //     // z.debug = !z.debug;
+        //     // gfx.refreshRenderTargets();
+        //     input.toggleCursor();
+        // }
 
         zgui.backend.newFrame(
-            z.gctx.swapchain_descriptor.width,
-            z.gctx.swapchain_descriptor.height,
+            gfx.gctx.swapchain_descriptor.width,
+            gfx.gctx.swapchain_descriptor.height,
         );
 
         zgui.pushStyleVar1f(.{ .idx = zgui.StyleVar.window_rounding, .v = 0 });
@@ -35,8 +32,8 @@ pub const DebugToggleSystem = System(struct {
         const main_viewport = zgui.getMainViewport();
         zgui.setNextWindowPos(.{ .x = 0, .y = 0 });
         zgui.setNextWindowSize(.{
-            .w = @as(f32, @floatFromInt(z.gctx.swapchain_descriptor.width)),
-            .h = @as(f32, @floatFromInt(z.gctx.swapchain_descriptor.height)),
+            .w = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
+            .h = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
         });
         zgui.setNextWindowViewport(main_viewport.getId());
 
@@ -70,15 +67,16 @@ pub const DebugToggleSystem = System(struct {
 });
 
 pub const DebugUIViewportSystem = System(struct {
-    pub const name = "debug ui viewport system";
-    pub const phase = &ecs.OnUpdate;
+    pub const phase = &Pipeline.Render;
 
-    pub fn run() void {
+    pub fn run(res_gfx: Resource(z.Gfx)) void {
+        const gfx = res_gfx.get();
+
         if (zgui.begin("Main", .{})) {
             if (zgui.begin("Viewport", .{})) {
                 const avail = zgui.getContentRegionAvail();
 
-                const tex_id = z.gctx.lookupResource(z.debug_texture_view).?;
+                const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
                 zgui.image(tex_id, .{ .w = avail[0], .h = avail[1] });
             }
             zgui.end();
@@ -88,16 +86,17 @@ pub const DebugUIViewportSystem = System(struct {
 });
 
 pub const DebugUIRenderSystem = System(struct {
-    pub const name = "debug ui render system";
-    pub const phase = &ecs.OnStore;
+    pub const phase = &Pipeline.PostRender;
 
-    pub fn run() void {
-        if (!z.debug) {
+    pub fn run(res_gfx: Resource(z.Gfx)) void {
+        const gfx = res_gfx.get();
+
+        if (!gfx.debug) {
             zgui.endFrame();
             return;
         }
 
-        const back_buffer_view = z.gctx.swapchain.getCurrentTextureView();
+        const back_buffer_view = gfx.gctx.swapchain.getCurrentTextureView();
         defer back_buffer_view.release();
 
         const color_attachments = [_]wgpu.RenderPassColorAttachment{.{
@@ -109,7 +108,7 @@ pub const DebugUIRenderSystem = System(struct {
             .color_attachment_count = color_attachments.len,
             .color_attachments = &color_attachments,
         };
-        const pass = z.encoder.beginRenderPass(render_pass_info);
+        const pass = gfx.encoder.beginRenderPass(render_pass_info);
         defer {
             pass.end();
             pass.release();
@@ -119,8 +118,8 @@ pub const DebugUIRenderSystem = System(struct {
         pass.setViewport(
             0,
             0,
-            @as(f32, @floatFromInt(z.gctx.swapchain_descriptor.width)),
-            @as(f32, @floatFromInt(z.gctx.swapchain_descriptor.height)),
+            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
+            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
             0,
             1,
         );

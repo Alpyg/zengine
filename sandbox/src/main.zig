@@ -15,6 +15,7 @@ pub fn main() !void {
 
     _ = app.registerModule(Gfx{})
         .registerModule(Gui{});
+    // .registerSystems(@import("ecs/systems/debug.zig"));
 
     app.run();
 }

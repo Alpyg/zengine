@@ -8,6 +8,7 @@ const zgui = @import("zgui");
 const z = @import("root.zig");
 const Ecs = z.Ecs;
 const Resource = z.Resource;
+const Pipeline = z.Pipeline;
 const System = z.System;
 
 const Gfx = @This();
@@ -20,7 +21,7 @@ encoder: wgpu.CommandEncoder = undefined,
 debug_texture: zgpu.TextureHandle = undefined,
 debug_texture_view: zgpu.TextureViewHandle = undefined,
 
-debug: bool = false,
+debug: bool = true,
 depth_texture: zgpu.TextureHandle = undefined,
 depth_texture_view: zgpu.TextureViewHandle = undefined,
 
@@ -126,7 +127,7 @@ const Systems = struct {
     const zflecs = @import("zflecs");
 
     pub const PreRender = System(struct {
-        pub const phase = &zflecs.OnStore;
+        pub const phase = &Pipeline.PreRender;
 
         pub fn run(res_gfx: Resource(Gfx)) void {
             var gfx = res_gfx.getMut();
@@ -137,7 +138,7 @@ const Systems = struct {
     });
 
     pub const Render = System(struct {
-        pub const phase = &zflecs.OnStore;
+        pub const phase = &Pipeline.Last;
 
         pub fn run(res_gfx: Resource(Gfx)) void {
             var gfx = res_gfx.getMut();
