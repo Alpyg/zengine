@@ -3,14 +3,16 @@ const zflecs = @import("zflecs");
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 
-const z = @import("root.zig");
+const z = @import("../root.zig");
 const Ecs = z.Ecs;
 const Gfx = z.Gfx;
 const Pipeline = z.Pipeline;
 const Resource = z.Resource;
 const System = z.System;
 
-pub fn init(ecs: *Ecs) void {
+const GuiModule = @This();
+
+pub fn init(_: GuiModule, ecs: *Ecs) void {
     zgui.init(z.allocator);
 
     _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);

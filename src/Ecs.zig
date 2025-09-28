@@ -3,6 +3,7 @@ const std = @import("std");
 const zflecs = @import("zflecs");
 
 pub const Pipeline = @import("ecs/Pipeline.zig");
+pub const Parent = @import("ecs/query.zig").Parent;
 pub const Query = @import("ecs/query.zig").Query;
 pub const With = @import("ecs/query.zig").With;
 pub const Without = @import("ecs/query.zig").Without;
@@ -70,7 +71,7 @@ pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     const ModuleType = @TypeOf(module);
 
     if (@hasDecl(ModuleType, "init")) {
-        ModuleType.init(self);
+        ModuleType.init(module, self);
     } else {
         @compileError("Module should have an init method");
     }
@@ -158,7 +159,7 @@ test "ecs system" {
     const Module = struct {
         const Self = @This();
 
-        pub fn init(ecs: *Ecs) void {
+        pub fn init(_: Self, ecs: *Ecs) void {
             _ = ecs.registerComponents(Components)
                 .registerSystems(Systems);
         }

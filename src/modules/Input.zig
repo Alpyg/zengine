@@ -1,73 +1,80 @@
 const std = @import("std");
 
-const zglfw = @import("zglfw");
 const zflecs = @import("zflecs");
+const zglfw = @import("zglfw");
 pub const Key = zglfw.Key;
 pub const Mouse = zglfw.MouseButton;
 
-const z = @import("root.zig");
+const z = @import("../root.zig");
 const Ecs = z.Ecs;
 const Gfx = z.Gfx;
 const Pipeline = z.Pipeline;
 const Resource = z.Resource;
 const System = z.System;
 
-const Input = @This();
+const InputModule = @This();
 
-key_states: std.AutoHashMap(Key, InputState) = undefined,
-mouse_states: std.AutoHashMap(Mouse, InputState) = undefined,
-
-cursor_disabled: bool = false,
-cursor_position: [2]f32 = undefined,
-mouse_delta: [2]f32 = undefined,
-
-gfx: *const Gfx = undefined,
-
-pub fn init(ecs: *Ecs) void {
-    _ = ecs.registerResource(Input{
-        .key_states = std.AutoHashMap(Key, InputState).init(z.allocator),
-        .mouse_states = std.AutoHashMap(Mouse, InputState).init(z.allocator),
-        .cursor_position = .{ 0, 0 },
-        .mouse_delta = .{ 0, 0 },
-        .gfx = zflecs.singleton_get(ecs.world, Gfx).?,
-    }).registerSystems(Systems);
+pub fn init(_: InputModule, ecs: *Ecs) void {
+    _ = ecs.registerResource(Input.init(ecs))
+        .registerSystems(Systems);
 }
 
-pub fn deinit(self: *Input) void {
-    self.key_states.deinit();
-    self.mouse_states.deinit();
-    self.cursor_position = undefined;
-    self.mouse_delta = undefined;
-}
+pub const Input = struct {
+    key_states: std.AutoHashMap(Key, InputState) = undefined,
+    mouse_states: std.AutoHashMap(Mouse, InputState) = undefined,
 
-pub fn getKey(self: *const Input, key: Key) InputState {
-    return self.key_states.get(key).?;
-}
+    cursor_disabled: bool = false,
+    cursor_position: [2]f32 = undefined,
+    mouse_delta: [2]f32 = undefined,
 
-pub fn getButton(self: *const Input, button: Mouse) InputState {
-    return self.mouse_states.get(button).?;
-}
+    gfx: *const Gfx = undefined,
 
-pub fn getCursorPos(self: *const Input) [2]f32 {
-    return self.cursor_position;
-}
-
-pub fn getMouseDelta(self: *const Input) [2]f32 {
-    return self.mouse_delta;
-}
-
-pub fn isCursorDisabled(self: *const Input) bool {
-    return self.cursor_disabled;
-}
-
-pub fn toggleCursor(self: *Input) void {
-    if (self.cursor_disabled) {
-        zglfw.setInputMode(self.gfx.window, .cursor, .normal) catch {};
-    } else {
-        zglfw.setInputMode(self.gfx.window, .cursor, .disabled) catch {};
+    pub fn init(ecs: *Ecs) Input {
+        return Input{
+            .key_states = std.AutoHashMap(Key, InputState).init(z.allocator),
+            .mouse_states = std.AutoHashMap(Mouse, InputState).init(z.allocator),
+            .cursor_position = .{ 0, 0 },
+            .mouse_delta = .{ 0, 0 },
+            .gfx = zflecs.singleton_get(ecs.world, Gfx).?,
+        };
     }
-    self.cursor_disabled = !self.cursor_disabled;
-}
+
+    pub fn deinit(self: *Input) void {
+        self.key_states.deinit();
+        self.mouse_states.deinit();
+        self.cursor_position = undefined;
+        self.mouse_delta = undefined;
+    }
+
+    pub fn getKey(self: *const Input, key: Key) InputState {
+        return self.key_states.get(key).?;
+    }
+
+    pub fn getButton(self: *const Input, button: Mouse) InputState {
+        return self.mouse_states.get(button).?;
+    }
+
+    pub fn getCursorPos(self: *const Input) [2]f32 {
+        return self.cursor_position;
+    }
+
+    pub fn getMouseDelta(self: *const Input) [2]f32 {
+        return self.mouse_delta;
+    }
+
+    pub fn isCursorDisabled(self: *const Input) bool {
+        return self.cursor_disabled;
+    }
+
+    pub fn toggleCursor(self: *Input) void {
+        if (self.cursor_disabled) {
+            zglfw.setInputMode(self.gfx.window, .cursor, .normal) catch {};
+        } else {
+            zglfw.setInputMode(self.gfx.window, .cursor, .disabled) catch {};
+        }
+        self.cursor_disabled = !self.cursor_disabled;
+    }
+};
 
 pub const InputState = packed struct {
     pressed: bool = false,

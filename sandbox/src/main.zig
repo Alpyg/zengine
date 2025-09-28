@@ -12,10 +12,11 @@ pub fn main() !void {
     var app = z.Ecs.init();
     defer app.deinit();
 
-    _ = app.registerModule(z.Gfx{})
-        .registerModule(z.Gui{})
-        .registerModule(z.Input{})
-        .registerSystems(@import("ecs/systems/debug.zig"));
+    _ = app.registerModule(z.GfxModule{})
+        .registerModule(z.GuiModule{})
+        .registerModule(z.InputModule{})
+        .registerModule(z.TransformModule{})
+        .registerModule(z.DebugModule{});
 
     app.run();
 }

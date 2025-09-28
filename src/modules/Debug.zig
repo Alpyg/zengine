@@ -1,21 +1,28 @@
 const std = @import("std");
 
-const z = @import("z");
-const zflecs = z.zflecs;
-const zgui = z.zgui;
-const wgpu = z.wgpu;
+const wgpu = @import("wgpu");
+const zflecs = @import("zflecs");
+const zgui = @import("zgui");
 
+const z = @import("../root.zig");
 const Ecs = z.Ecs;
+const Gfx = z.Gfx;
+const Input = z.Input;
+const Pipeline = z.Pipeline;
+const Resource = z.Resource;
+const System = z.System;
 
-pub fn init(ecs: *Ecs) void {
+const DebugModule = @This();
+
+pub fn init(_: DebugModule, ecs: *Ecs) void {
     _ = ecs.registerSystems(Systems);
 }
 
 const Systems = struct {
-    pub const DebugRender = z.System(struct {
+    pub const DebugRender = System(struct {
         pub const phase = &z.Pipeline.Render;
 
-        pub fn run(res_gfx: z.Resource(z.Gfx), res_input: z.Resource(z.Input)) void {
+        pub fn run(res_gfx: Resource(Gfx), res_input: Resource(Input)) void {
             const gfx = res_gfx.get();
             const input = res_input.getMut();
 
