@@ -43,6 +43,14 @@ pub const Components = struct {
         rotation: zm.Quat = zm.qidentity(),
         scale: zm.Vec = .{ 1, 1, 1, 1 },
 
+        pub inline fn mat(self: *const Self) zm.Mat {
+            const T = zm.translationV(self.translation);
+            const R = zm.quatToMat(self.rotation);
+            const S = zm.scalingV(self.scale);
+
+            return zm.mul(zm.mul(T, R), S);
+        }
+
         pub inline fn from_mat(m: zm.Mat) Self {
             const scale = zm.f32x4(
                 zm.length3(m[0])[0],
@@ -129,11 +137,12 @@ const Systems = struct {
             while (it.next()) |t| : (i += 1) {
                 const transform = t[0];
                 const global = t[1];
+                const parent = t[2];
 
-                if (t[2]) |parent| {
-                    std.log.info("\n\n{any} {any} {any}\n\n", .{ transform, global, parent });
+                if (parent) |p| {
+                    global.transform = zm.mul(p.transform, transform.mat());
                 } else {
-                    std.log.info("\n\n{any} {any}\n\n", .{ transform, global });
+                    global.transform = transform.mat();
                 }
             }
         }
