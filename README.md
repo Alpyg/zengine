@@ -1,6 +1,6 @@
-## Game engine based on zig-gamedev libraries
+# Game engine based on zig-gamedev libraries
 
-### ECS
+## ECS
 
 Implements a simple Bevy-like query system
 
