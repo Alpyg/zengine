@@ -166,6 +166,7 @@ test "ecs system" {
 
         const Components = struct {
             pub const Counter = struct { value: usize = 0 };
+            pub const Counter2 = struct { value: usize = 0 };
             pub const Tag = struct {};
         };
 
@@ -175,11 +176,19 @@ test "ecs system" {
 
                 pub fn run(
                     q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
+                    q_counters: Query(.{Components.Counter, Components.Counter2}, .{Without(Components.Tag)}),
                     q_counter_tag: Query(.{Components.Counter}, .{With(Components.Tag)}),
                 ) void {
                     var counter_it = q_counter.iter();
                     while (counter_it.next()) |counter| {
                         counter.value += 1;
+                    }
+
+                    var counter_its = q_counters.iter();
+                    while (counter_its.next()) |counters| {
+                        var counter1, var counter2 = counters;
+                        counter1.value += 1;
+                        counter2.value += 2;
                     }
 
                     var counter_tag_it = q_counter_tag.iter();
@@ -211,6 +220,14 @@ test "ecs system" {
     var counter_it = counter_q.iter();
     while (counter_it.next()) |counter| {
         try expect(counter.value == iterations);
+    }
+
+    var counters_q = Query(.{Module.Components.Counter, Module.Components.Counter2}, .{Without(Module.Components.Tag)}).init(ecs.world);
+    var counters_it = counters_q.iter();
+    while (counters_it.next()) |counters| {
+        const counter1, const counter2 = counters;
+        try expect(counter1.value == iterations);
+        try expect(counter2.value == iterations * 2);
     }
 
     var tag_q = Query(.{Module.Components.Counter}, .{With(Module.Components.Tag)}).init(ecs.world);

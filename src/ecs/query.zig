@@ -157,11 +157,15 @@ fn QueryIter(comptime QueryTypes: anytype) type {
         }
     }
     const ComponentsTable = std.meta.Tuple(&TableTypes);
-    const Components = if (QueryTypes.len > 1) std.meta.Tuple(&ComponentTypes) else TableTypes[0];
+    const Components = if (QueryTypes.len > 1)
+        std.meta.Tuple(&ComponentTypes)
+    else
+        *@typeInfo(TableTypes[0]).pointer.child;
 
     // @compileLog(ComponentTypes);
     // @compileLog(ComponentsTable);
     // @compileLog(Components);
+    // @compileLog(0);
 
     return struct {
         const Self = @This();
