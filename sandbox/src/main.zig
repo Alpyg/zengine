@@ -1,8 +1,9 @@
 const std = @import("std");
 
-
 const z = @import("z");
 const zm = z.zmath;
+
+const Components = @import("ecs/components.zig");
 
 pub fn main() !void {
     var gpa = std.heap.DebugAllocator(.{}){};
@@ -21,18 +22,21 @@ pub fn main() !void {
         .registerModule(z.TransformModule{})
         .registerModule(z.DebugModule{})
         .registerModule(z.CameraModule{})
-        .registerModule(z.RenderModule{});
+        .registerModule(z.RenderModule{})
+        .registerComponents(@import("ecs/components.zig"))
+        .registerSystems(@import("ecs/systems.zig"));
 
     setup(&app);
 
     app.run();
 }
 
-fn setup(app: *z.Ecs) void{
+fn setup(app: *z.Ecs) void {
     const player = app.new("Player");
     _ = app.add(player, .{
         z.Name{ .value = "Player" },
         z.Camera{},
+        Components.FlycamController{},
         z.Transform.from_mat(zm.inverse(zm.lookAtRh(
             zm.f32x4(0.0, 0.0, 5.0, 1.0),
             zm.f32x4(0.0, 0.0, 0.0, 1.0),
