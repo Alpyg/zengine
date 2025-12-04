@@ -20,15 +20,13 @@ pub fn init(_: DebugModule, ecs: *Ecs) void {
 
 const Systems = struct {
     pub const DebugRender = System(struct {
-        pub const phase = &z.Pipeline.Render;
+        pub const phase = &z.Pipeline.First;
 
         pub fn run(res_gfx: Resource(Gfx), res_input: Resource(Input)) void {
             const gfx = res_gfx.get();
             const input = res_input.getMut();
 
             if (input.getKey(.escape).just_pressed) {
-                // z.debug = !z.debug;
-                // gfx.refreshRenderTargets();
                 input.toggleCursor();
             }
 
@@ -60,6 +58,11 @@ const Systems = struct {
 
             if (zgui.begin("Main", .{})) {
                 _ = zgui.DockSpace("MainDockspace", .{ 0, 0 }, .{});
+            }
+            zgui.end();
+
+            if (zgui.begin("Tool", .{})) {
+                _ = zgui.DockSpace("ToolDockspace", .{ 0, 0 }, .{});
             }
             zgui.end();
 

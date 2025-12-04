@@ -39,7 +39,7 @@ pub fn deinit(_: *Ecs) void {
 
 const Systems = struct {
     pub const PreRender = System(struct {
-        pub const phase = &Pipeline.PreRender;
+        pub const phase = &Pipeline.First;
 
         pub fn run(r_gfx: Resource(Gfx)) void {
             const gfx = r_gfx.get();
