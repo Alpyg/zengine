@@ -18,21 +18,6 @@ const TransformModule = @This();
 pub fn init(_: TransformModule, ecs: *Ecs) void {
     _ = ecs.registerComponents(Components)
         .registerSystems(Systems);
-
-    const parent = ecs.new("Test Parent");
-    _ = ecs.add(parent, .{
-        Components.Name{ .value = "Parent" },
-        Components.Transform{ .translation = .{ 1, 2, 3, 0 } },
-        Components.GlobalTransform{ .transform = zm.identity() },
-    });
-
-    const child = ecs.new("Test Child");
-    _ = ecs.add(child, .{
-        Components.Name{ .value = "Child" },
-        Components.Transform{ .translation = .{ 3, 2, 1, 0 } },
-        Components.GlobalTransform{},
-    });
-    zflecs.add_pair(ecs.world, child, zflecs.ChildOf, parent);
 }
 
 pub const Components = struct {
@@ -131,7 +116,7 @@ const Systems = struct {
     pub const PropagateParentTransform = System(struct {
         pub const phase = &Pipeline.PostUpdate;
 
-        pub fn run(q: Query(.{ Components.Transform, Components.GlobalTransform, ?Parent(Components.GlobalTransform) }, .{})) void {
+        pub fn run(q: Query(.{ z.Transform, z.GlobalTransform, ?Parent(z.GlobalTransform) }, .{})) void {
             var it = q.iter();
             var i: usize = 0;
             while (it.next()) |t| : (i += 1) {

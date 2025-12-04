@@ -4,7 +4,7 @@ const assert = std.debug.assert;
 const zgpu = @import("zgpu");
 const wgpu = zgpu.wgpu;
 
-const z = @import("../root.zig");
+const z = @import("../../root.zig");
 
 pub const VertexBuffers = struct {
     vertex: zgpu.BufferHandle,
@@ -65,7 +65,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
                 break :sum sum;
             };
 
-            const attributes_len = comptime blk: {
+            const vertex_count = blk: {
                 const fields = @typeInfo(Attributes).@"struct".fields;
                 if (fields.len == 0) break :blk 0;
                 const field = @field(attributes, fields[0].name);
@@ -74,7 +74,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
 
             const vertex_buffer = gctx.createBuffer(.{
                 .usage = .{ .copy_dst = true, .vertex = true },
-                .size = vertex_size * attributes_len,
+                .size = vertex_size * vertex_count,
             });
 
             const index_buffer = gctx.createBuffer(.{
@@ -83,7 +83,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
             });
 
             var offset: u32 = 0;
-            var vertex_data = z.allocator.alloc(u8, vertex_size * attributes_len) catch unreachable;
+            var vertex_data = z.allocator.alloc(u8, vertex_size * vertex_count) catch unreachable;
             defer z.allocator.free(vertex_data);
 
             inline for (attribute_fields) |field| {
@@ -112,7 +112,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
             );
 
             self.vertex_buffer = vertex_buffer;
-            self.vertex_count = @intCast(attributes_len);
+            self.vertex_count = @intCast(vertex_count);
             self.index_buffer = index_buffer;
             self.index_count = @intCast(indices.len);
         }

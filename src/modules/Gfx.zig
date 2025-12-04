@@ -19,6 +19,7 @@ pub fn init(self: GfxModule, ecs: *Ecs) void {
     const gfx = Gfx.init(self);
 
     _ = ecs.registerResource(gfx)
+        .registerResource(gfx.gctx)
         .registerSystems(Systems);
 }
 
@@ -61,6 +62,7 @@ pub const Gfx = struct {
 
         self.gctx = gctx;
         self.refreshRenderTargets();
+        z.gctx = gctx;
 
         return self;
     }
@@ -70,9 +72,9 @@ pub const Gfx = struct {
         zglfw.terminate();
     }
 
-    pub fn getRenderTarget(self: *Gfx) wgpu.TextureView {
+    pub fn getRenderTarget(self: *const Gfx) wgpu.TextureView {
         if (self.debug) {
-            return self.gctx.lookupResource(z.debug_texture_view).?;
+            return self.gctx.lookupResource(self.debug_texture_view).?;
         }
         return self.gctx.swapchain.getCurrentTextureView();
     }

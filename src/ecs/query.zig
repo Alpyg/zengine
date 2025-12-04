@@ -162,11 +162,6 @@ fn QueryIter(comptime QueryTypes: anytype) type {
     else
         *@typeInfo(TableTypes[0]).pointer.child;
 
-    // @compileLog(ComponentTypes);
-    // @compileLog(ComponentsTable);
-    // @compileLog(Components);
-    // @compileLog(0);
-
     return struct {
         const Self = @This();
 

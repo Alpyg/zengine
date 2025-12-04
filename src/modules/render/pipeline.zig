@@ -4,7 +4,7 @@ const zgpu = @import("zgpu");
 const wgpu = zgpu.wgpu;
 const zm = @import("zmath");
 
-const z = @import("../root.zig");
+const z = @import("../../root.zig");
 const mesh = @import("mesh.zig");
 
 /// RenderPipeline for a given type.

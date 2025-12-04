@@ -4,7 +4,7 @@ const zgpu = @import("zgpu");
 const wgpu = zgpu.wgpu;
 const zm = @import("zmath");
 
-const z = @import("../root.zig");
+const z = @import("../../root.zig");
 
 /// RenderPipeline for a given type.
 pub fn Material(comptime shader: []const u8, comptime T: type, comptime V: anytype) type {
