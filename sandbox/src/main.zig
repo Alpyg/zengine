@@ -15,6 +15,7 @@ pub fn main() !void {
     defer app.deinit();
 
     _ = app.registerModule(z.GfxModule{})
+        .registerModule(z.TimeModule{})
         .registerModule(z.GuiModule{})
         .registerModule(z.InputModule{})
         .registerModule(z.TransformModule{})

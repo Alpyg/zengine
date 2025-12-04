@@ -25,6 +25,7 @@ pub const GuiModule = @import("modules/Gui.zig");
 pub const InputModule = @import("modules/Input.zig");
 pub const RenderModule = @import("modules/Render.zig");
 pub const RenderPipeline = RenderModule.RenderPipeline;
+pub const TimeModule = @import("modules/Time.zig");
 pub const TransformModule = @import("modules/Transform.zig");
 
 // Components and Resources
@@ -32,8 +33,10 @@ pub const Camera = CameraModule.Components.Camera;
 pub const Gfx = GfxModule.Gfx;
 pub const GlobalTransform = TransformModule.Components.GlobalTransform;
 pub const Input = InputModule.Input;
+pub const MainCamera = CameraModule.Components.MainCamera;
 pub const Name = TransformModule.Components.Name;
 pub const StandardMaterial= RenderModule.Components.StandardMaterial;
+pub const Time = TimeModule.Components.Time;
 pub const Transform = TransformModule.Components.Transform;
 pub const TriangleMesh = RenderModule.Components.TriangleMesh;
 
