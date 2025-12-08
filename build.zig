@@ -3,6 +3,10 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const options = .{
+        .target = target,
+        .optimize = optimize,
+    };
 
     const zglfw_dep = b.dependency("zglfw", .{});
     const zgpu_dep = b.dependency("zgpu", .{});
@@ -20,8 +24,8 @@ pub fn build(b: *std.Build) void {
 
     const mod = b.addModule("root", .{
         .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
+        .target = options.target,
+        .optimize = options.optimize,
         .imports = &.{
             .{ .name = "zglfw", .module = zglfw_dep.module("root") },
             .{ .name = "zgpu", .module = zgpu_dep.module("root") },
@@ -47,4 +51,35 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    buildExamples(b, options, mod);
+}
+
+pub const Examples = struct {
+    pub const sandbox = @import("demos/sandbox/build.zig");
+};
+
+pub fn buildExamples(b: *std.Build, options: anytype, mod: anytype) void {
+    inline for (comptime std.meta.declarations(Examples)) |d| {
+        _ = buildExe(
+            b,
+            options,
+            @field(Examples, d.name),
+            mod,
+        );
+    }
+}
+
+fn buildExe(b: *std.Build, options: anytype, example: anytype, mod: anytype) *std.Build.Step.Compile {
+    const exe = example.build(b, options, mod);
+
+    const install_exe = b.addInstallArtifact(exe, .{});
+    b.getInstallStep().dependOn(&install_exe.step);
+    b.step(example.demo_name, "Build '" ++ example.demo_name ++ "' demo").dependOn(&install_exe.step);
+
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(&install_exe.step);
+    b.step(example.demo_name ++ "-run", "Run '" ++ example.demo_name ++ "' demo").dependOn(&run_cmd.step);
+
+    return exe;
 }
