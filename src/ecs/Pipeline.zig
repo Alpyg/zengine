@@ -1,6 +1,6 @@
 const zflecs = @import("zflecs");
 
-const Ecs = @import("../Ecs.zig");
+const Ecs = @import("Ecs.zig");
 
 pub var First: zflecs.entity_t = undefined;
 

@@ -29,7 +29,7 @@ pub fn init(_: GuiModule, ecs: *Ecs) void {
     zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
     zgui.getStyle().scaleAllSizes(1);
 
-    _ = ecs.registerSystems(Systems);
+    _ = ecs.registerEcs(GuiModule);
 }
 
 pub fn deinit(_: *Ecs) void {
@@ -37,61 +37,59 @@ pub fn deinit(_: *Ecs) void {
     zgui.backend.deinit();
 }
 
-const Systems = struct {
-    pub const PreRender = System(struct {
-        pub const phase = &Pipeline.First;
+pub const PreRender = System(struct {
+    pub const phase = &Pipeline.First;
 
-        pub fn run(r_gfx: Resource(Gfx)) void {
-            const gfx = r_gfx.get();
+    pub fn run(r_gfx: Resource(Gfx)) void {
+        const gfx = r_gfx.get();
 
-            zgui.backend.newFrame(
-                gfx.gctx.swapchain_descriptor.width,
-                gfx.gctx.swapchain_descriptor.height,
-            );
+        zgui.backend.newFrame(
+            gfx.gctx.swapchain_descriptor.width,
+            gfx.gctx.swapchain_descriptor.height,
+        );
+    }
+});
+
+pub const Render = System(struct {
+    pub const phase = &Pipeline.PostRender;
+
+    pub fn run(r_gfx: Resource(Gfx)) void {
+        const gfx = r_gfx.get();
+
+        if (!gfx.debug) {
+            zgui.endFrame();
+            return;
         }
-    });
 
-    pub const Render = System(struct {
-        pub const phase = &Pipeline.PostRender;
+        const back_buffer_view = gfx.gctx.swapchain.getCurrentTextureView();
+        defer back_buffer_view.release();
 
-        pub fn run(r_gfx: Resource(Gfx)) void {
-            const gfx = r_gfx.get();
-
-            if (!gfx.debug) {
-                zgui.endFrame();
-                return;
-            }
-
-            const back_buffer_view = gfx.gctx.swapchain.getCurrentTextureView();
-            defer back_buffer_view.release();
-
-            const color_attachments = [_]wgpu.RenderPassColorAttachment{.{
-                .view = back_buffer_view,
-                .load_op = .clear,
-                .store_op = .store,
-            }};
-            const render_pass_info = wgpu.RenderPassDescriptor{
-                .color_attachment_count = color_attachments.len,
-                .color_attachments = &color_attachments,
-            };
-            const pass = gfx.encoder.beginRenderPass(render_pass_info);
-            defer {
-                pass.end();
-                pass.release();
-            }
-
-            const size = gfx.getRenderTargetSize();
-            pass.setViewport(
-                0,
-                0,
-                @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
-                @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
-                0,
-                1,
-            );
-            pass.setScissorRect(0, 0, size[0], size[1]);
-
-            zgui.backend.draw(pass);
+        const color_attachments = [_]wgpu.RenderPassColorAttachment{.{
+            .view = back_buffer_view,
+            .load_op = .clear,
+            .store_op = .store,
+        }};
+        const render_pass_info = wgpu.RenderPassDescriptor{
+            .color_attachment_count = color_attachments.len,
+            .color_attachments = &color_attachments,
+        };
+        const pass = gfx.encoder.beginRenderPass(render_pass_info);
+        defer {
+            pass.end();
+            pass.release();
         }
-    });
-};
+
+        const size = gfx.getRenderTargetSize();
+        pass.setViewport(
+            0,
+            0,
+            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
+            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
+            0,
+            1,
+        );
+        pass.setScissorRect(0, 0, size[0], size[1]);
+
+        zgui.backend.draw(pass);
+    }
+});

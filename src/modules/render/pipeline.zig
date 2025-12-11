@@ -9,6 +9,7 @@ const mesh = @import("mesh.zig");
 
 /// RenderPipeline for a given type.
 pub const RenderPipeline = struct {
+    pub const COMPONENT = {};
     const Self = @This();
 
     gctx: *zgpu.GraphicsContext,
@@ -87,7 +88,7 @@ pub const RenderPipeline = struct {
     }
 };
 
-fn vertexFormatSize(format: wgpu.VertexFormat) u32 {
+inline fn vertexFormatSize(format: wgpu.VertexFormat) u32 {
     return switch (format) {
         .uint8x2 => @sizeOf([2]u8),
         .uint8x4 => @sizeOf([4]u8),

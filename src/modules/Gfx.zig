@@ -19,8 +19,7 @@ pub fn init(self: GfxModule, ecs: *Ecs) void {
     const gfx = Gfx.init(self);
 
     _ = ecs.registerResource(gfx)
-        .registerResource(gfx.gctx)
-        .registerSystems(Systems);
+        .registerEcs(GfxModule);
 }
 
 pub const Gfx = struct {
@@ -135,34 +134,30 @@ pub const Gfx = struct {
     }
 };
 
-const Systems = struct {
-    const zflecs = @import("zflecs");
+pub const PreRender = System(struct {
+    pub const phase = &Pipeline.PreRender;
 
-    pub const PreRender = System(struct {
-        pub const phase = &Pipeline.PreRender;
+    pub fn run(res_gfx: Resource(Gfx)) void {
+        var gfx = res_gfx.getMut();
 
-        pub fn run(res_gfx: Resource(Gfx)) void {
-            var gfx = res_gfx.getMut();
+        gfx.refreshRenderTargets();
+        gfx.encoder = gfx.gctx.device.createCommandEncoder(null);
+    }
+});
 
-            gfx.refreshRenderTargets();
-            gfx.encoder = gfx.gctx.device.createCommandEncoder(null);
-        }
-    });
+pub const Render = System(struct {
+    pub const phase = &Pipeline.Last;
 
-    pub const Render = System(struct {
-        pub const phase = &Pipeline.Last;
+    pub fn run(res_gfx: Resource(Gfx)) void {
+        var gfx = res_gfx.getMut();
 
-        pub fn run(res_gfx: Resource(Gfx)) void {
-            var gfx = res_gfx.getMut();
+        _ = gfx.gctx.swapchain.getCurrentTextureView(); // Prevent error when nothing is rendered
 
-            _ = gfx.gctx.swapchain.getCurrentTextureView(); // Prevent error when nothing is rendered
+        const commands = gfx.encoder.finish(null);
+        defer commands.release();
+        gfx.gctx.submit(&.{commands});
 
-            const commands = gfx.encoder.finish(null);
-            defer commands.release();
-            gfx.gctx.submit(&.{commands});
-
-            if (gfx.gctx.present() == .swap_chain_resized) gfx.refreshRenderTargets();
-            gfx.encoder.release();
-        }
-    });
-};
+        if (gfx.gctx.present() == .swap_chain_resized) gfx.refreshRenderTargets();
+        gfx.encoder.release();
+    }
+});

@@ -2,14 +2,14 @@ const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-pub const Pipeline = @import("ecs/Pipeline.zig");
-pub const Parent = @import("ecs/query.zig").Parent;
-pub const Query = @import("ecs/query.zig").Query;
-pub const With = @import("ecs/query.zig").With;
-pub const Without = @import("ecs/query.zig").Without;
-pub const Resource = @import("ecs/resource.zig").Resource;
-pub const System = @import("ecs/system.zig").System;
-const z = @import("root.zig");
+pub const Pipeline = @import("Pipeline.zig");
+pub const Parent = @import("query.zig").Parent;
+pub const Query = @import("query.zig").Query;
+pub const With = @import("query.zig").With;
+pub const Without = @import("query.zig").Without;
+pub const Resource = @import("resource.zig").Resource;
+pub const System = @import("system.zig").System;
+const z = @import("../root.zig");
 
 const Ecs = @This();
 
@@ -67,6 +67,35 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
     }
 }
 
+pub fn registerEcs(self: *Ecs, T: type) *Ecs {
+    if (isSystem(T)) {
+        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.phase.*, T.run);
+        std.log.debug("Registered system `{s}`", .{@typeName(T)});
+
+        if (@hasDecl(T, "init")) T.init(self.world);
+    } else if (@hasDecl(T, "COMPONENT")) {
+        if (@sizeOf(T) > 0) {
+            zflecs.COMPONENT(self.world, T);
+            std.log.debug("Registered component `{s}`", .{@typeName(T)});
+        } else {
+            zflecs.TAG(self.world, T);
+            std.log.debug("Registered tag `{s}`", .{@typeName(T)});
+        }
+    } else {
+        if (@typeInfo(T) != .@"struct") return self;
+
+        const decls = @typeInfo(T).@"struct".decls;
+        inline for (decls) |decl| {
+            const Child = @field(T, decl.name);
+            if (@TypeOf(Child) != type) continue;
+
+            _ = self.registerEcs(Child);
+        }
+    }
+
+    return self;
+}
+
 pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     const ModuleType = @TypeOf(module);
 
@@ -106,10 +135,6 @@ pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
     return self;
 }
 
-inline fn isSystem(comptime T: type) bool {
-    return @hasDecl(T, "phase") and @hasDecl(T, "run");
-}
-
 pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     if (isSystem(T)) {
         _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.phase.*, T.run);
@@ -129,6 +154,20 @@ pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     return self;
 }
 
+pub fn registerPipeline(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
+    phase.* = zflecs.new_w_id(self.world, zflecs.Phase);
+
+    if (depends_on) |depended_on| {
+        zflecs.add_pair(self.world, phase.*, zflecs.DependsOn, depended_on);
+    }
+
+    return self;
+}
+
+inline fn isSystem(comptime T: type) bool {
+    return @hasDecl(T, "phase") and @hasDecl(T, "run");
+}
+
 fn deinitSystems(comptime T: type) void {
     if (isSystem(T)) {
         if (@hasDecl(T, "deinit")) T.deinit();
@@ -141,16 +180,6 @@ fn deinitSystems(comptime T: type) void {
             deinitSystems(Child);
         }
     }
-}
-
-pub fn registerPipeline(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
-    phase.* = zflecs.new_w_id(self.world, zflecs.Phase);
-
-    if (depends_on) |depended_on| {
-        zflecs.add_pair(self.world, phase.*, zflecs.DependsOn, depended_on);
-    }
-
-    return self;
 }
 
 test "ecs system" {
@@ -176,7 +205,7 @@ test "ecs system" {
 
                 pub fn run(
                     q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
-                    q_counters: Query(.{Components.Counter, Components.Counter2}, .{Without(Components.Tag)}),
+                    q_counters: Query(.{ Components.Counter, Components.Counter2 }, .{Without(Components.Tag)}),
                     q_counter_tag: Query(.{Components.Counter}, .{With(Components.Tag)}),
                 ) void {
                     var counter_it = q_counter.iter();
@@ -222,7 +251,7 @@ test "ecs system" {
         try expect(counter.value == iterations);
     }
 
-    var counters_q = Query(.{Module.Components.Counter, Module.Components.Counter2}, .{Without(Module.Components.Tag)}).init(ecs.world);
+    var counters_q = Query(.{ Module.Components.Counter, Module.Components.Counter2 }, .{Without(Module.Components.Tag)}).init(ecs.world);
     var counters_it = counters_q.iter();
     while (counters_it.next()) |counters| {
         const counter1, const counter2 = counters;

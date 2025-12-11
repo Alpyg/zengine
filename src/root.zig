@@ -8,14 +8,14 @@ pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
 
 // Ecs
-pub const Ecs = @import("Ecs.zig");
-pub const Parent = @import("Ecs.zig").Parent;
-pub const Pipeline = @import("Ecs.zig").Pipeline;
-pub const Query = @import("Ecs.zig").Query;
-pub const Resource = @import("Ecs.zig").Resource;
-pub const System = @import("Ecs.zig").System;
-pub const With = @import("Ecs.zig").With;
-pub const Without = @import("Ecs.zig").Without;
+pub const Ecs = @import("ecs/Ecs.zig");
+pub const Parent = Ecs.Parent;
+pub const Pipeline = Ecs.Pipeline;
+pub const Query = Ecs.Query;
+pub const Resource = Ecs.Resource;
+pub const System = Ecs.System;
+pub const With = Ecs.With;
+pub const Without = Ecs.Without;
 
 // Modules
 pub const CameraModule = @import("modules/Camera.zig");
@@ -24,21 +24,21 @@ pub const GfxModule = @import("modules/Gfx.zig");
 pub const GuiModule = @import("modules/Gui.zig");
 pub const InputModule = @import("modules/Input.zig");
 pub const RenderModule = @import("modules/Render.zig");
-pub const RenderPipeline = RenderModule.RenderPipeline;
 pub const TimeModule = @import("modules/Time.zig");
 pub const TransformModule = @import("modules/Transform.zig");
 
 // Components and Resources
-pub const Camera = CameraModule.Components.Camera;
+pub const Camera = CameraModule.Camera;
 pub const Gfx = GfxModule.Gfx;
-pub const GlobalTransform = TransformModule.Components.GlobalTransform;
+pub const GlobalTransform = TransformModule.GlobalTransform;
 pub const Input = InputModule.Input;
-pub const MainCamera = CameraModule.Components.MainCamera;
-pub const Name = TransformModule.Components.Name;
-pub const StandardMaterial= RenderModule.Components.StandardMaterial;
-pub const Time = TimeModule.Components.Time;
-pub const Transform = TransformModule.Components.Transform;
-pub const TriangleMesh = RenderModule.Components.TriangleMesh;
+pub const MainCamera = CameraModule.MainCamera;
+pub const Name = TransformModule.Name;
+pub const RenderPipeline = RenderModule.RenderPipeline;
+pub const StandardMaterial = RenderModule.StandardMaterial;
+pub const Time = TimeModule.Time;
+pub const Transform = TransformModule.Transform;
+pub const TriangleMesh = RenderModule.TriangleMesh;
 
 pub var allocator: std.mem.Allocator = undefined;
 pub var gctx: *zgpu.GraphicsContext = undefined;

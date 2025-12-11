@@ -35,6 +35,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
     });
 
     return struct {
+        pub const COMPONENT = {};
         const Self = @This();
         pub const Attributes = AttributeData;
 

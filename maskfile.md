@@ -6,10 +6,10 @@
 zig build run
 ```
 
-## sandbox
+## demo (demo)
 
 ```sh
-cd sandbox && zig build run
+zig build ${demo}-run
 ```
 
 ## test
