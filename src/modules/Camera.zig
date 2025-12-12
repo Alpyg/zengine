@@ -49,16 +49,8 @@ pub const Camera = struct {
     /// Recomputes all camera matrices based on the given transform and viewport size.
     /// - `transform`: The camera's world transform (position + orientation).
     /// - `aspect_ratio`: Framebuffer aspect ratio.
-    pub fn calculate_matrices(self: *Self, transform: *const z.Transform, aspect_ratio: f32) void {
-        self.world_view = zm.inverse(
-            zm.mul(
-                zm.mul(
-                    zm.quatToMat(transform.rotation),
-                    zm.translationV(transform.translation),
-                ),
-                zm.scalingV(transform.scale),
-            ),
-        );
+    pub fn calculate_matrices(self: *Self, transform: *const z.GlobalTransform, aspect_ratio: f32) void {
+        self.world_view = zm.inverse(transform.transform);
 
         self.view_clip = zm.perspectiveFovRh(
             self.v_fov,
@@ -84,11 +76,7 @@ pub const UpdateCameraMatricesSystem = System(struct {
         while (camera_it.next()) |camera_tuple| {
             var camera: *z.Camera, const transform: *z.GlobalTransform = camera_tuple;
             camera.calculate_matrices(
-                &z.Transform{
-                    .translation = transform.translation(),
-                    .rotation = transform.rotation(),
-                    .scale = transform.scale(),
-                },
+                transform,
                 @as(f32, @floatFromInt(size[0])) / @as(f32, @floatFromInt(size[1])),
             );
         }

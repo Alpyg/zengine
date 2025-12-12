@@ -85,14 +85,7 @@ pub const Render = z.System(struct {
             pass.setIndexBuffer(ib_info.gpuobj.?, .uint32, 0, ib_info.size);
             pass.setPipeline(pipeline);
 
-            const transform_mat = zm.mul(
-                zm.mul(
-                    zm.translationV(transform.translation()),
-                    zm.quatToMat(transform.rotation()),
-                ),
-                zm.scalingV(transform.scale()),
-            );
-            const object_to_clip = zm.mul(transform_mat, camera.world_clip);
+            const object_to_clip = zm.mul(transform.transform, camera.world_clip);
 
             const mem = gfx.gctx.uniformsAllocate(zm.Mat, 1);
             mem.slice[0] = zm.transpose(object_to_clip);

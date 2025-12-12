@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const z = @import("z");
+const zgui = z.zgui;
 const zm = z.zmath;
 
 pub const FlycamController = struct {
@@ -11,7 +12,7 @@ pub const FlycamController = struct {
 };
 
 pub const FlycamControls = z.System(struct {
-    pub const phase = &z.Pipeline.PreRender;
+    pub const phase = &z.Pipeline.Update;
 
     pub fn run(
         r_input: z.Resource(z.Input),
@@ -52,27 +53,25 @@ pub const FlycamControls = z.System(struct {
             transform.translation += move * zm.splat(zm.Vec, time.delta_time * speed);
         }
 
-        var angles = zm.quatToRollPitchYaw(transform.rotation);
+        var pitch, var yaw, _ = zm.quatToRollPitchYaw(transform.rotation);
 
         const d_mouse = input.getMouseDelta();
-        angles[1] -= d_mouse[0] * controller.sensitivity; // yaw
-        angles[0] -= d_mouse[1] * controller.sensitivity; // pitch
-        angles[0] = std.math.clamp(angles[0], -std.math.pi / 2.0 + 0.1, std.math.pi / 2.0 - 0.1);
+        yaw -= d_mouse[0] * controller.sensitivity; // yaw
+        pitch -= d_mouse[1] * controller.sensitivity; // pitch
+        pitch = std.math.clamp(pitch, -std.math.pi / 2.0 + 0.1, std.math.pi / 2.0 - 0.1);
 
-        transform.rotation = zm.normalize4(zm.quatFromRollPitchYaw(angles[0], angles[1], angles[2]));
+        transform.rotation = zm.quatFromRollPitchYaw(pitch, yaw, 0);
     }
 });
 
 pub const DebugMovementSystem = z.System(struct {
     pub const phase = &z.Pipeline.Update;
 
-    const zgui = z.zgui;
-
     pub fn run(
-        q_flycam: z.Query(.{ z.Transform, FlycamController }, .{}),
+        q_flycam: z.Query(.{ z.Transform, z.GlobalTransform, FlycamController }, .{}),
     ) void {
         var flycam_it = q_flycam.iter();
-        var transform: *z.Transform, const controller: *FlycamController = flycam_it.next() orelse return;
+        var transform: *z.Transform, const global: *z.GlobalTransform, const controller: *FlycamController = flycam_it.next() orelse return;
 
         if (zgui.begin("Main", .{})) {
             if (zgui.begin("Inspector", .{})) {
@@ -80,14 +79,20 @@ pub const DebugMovementSystem = z.System(struct {
 
                 var rotation_euler = zm.loadArr3(zm.quatToRollPitchYaw(transform.rotation));
 
-                _ = zgui.inputFloat3("Position", .{ .v = @ptrCast(&transform.translation) });
-                _ = zgui.inputFloat3("Rotation", .{ .v = @ptrCast(&rotation_euler) });
-                _ = zgui.inputFloat3("Scale", .{ .v = @ptrCast(&transform.scale) });
+                _ = zgui.inputFloat4("Position", .{ .v = @ptrCast(&transform.translation) });
+                _ = zgui.inputFloat4("Rotation", .{ .v = @ptrCast(&rotation_euler) });
+                _ = zgui.inputFloat4("Scale", .{ .v = @ptrCast(&transform.scale) });
 
                 transform.rotation = zm.quatFromRollPitchYaw(rotation_euler[0], rotation_euler[1], rotation_euler[2]);
 
                 _ = zgui.inputFloat("Speed", .{ .v = @ptrCast(&controller.speed) });
                 _ = zgui.inputFloat("Sensitivity", .{ .v = @ptrCast(&controller.sensitivity) });
+
+                var global_rotation_euler = zm.loadArr3(zm.quatToRollPitchYaw(global.rotation()));
+
+                _ = zgui.inputFloat4("G Position", .{ .v = @constCast(@ptrCast(&global.translation())) });
+                _ = zgui.inputFloat4("G Rotation", .{ .v = @constCast(@ptrCast(&global_rotation_euler)) });
+                _ = zgui.inputFloat4("G Scale", .{ .v = @constCast(@ptrCast(&global.scale())) });
             }
             zgui.end();
         }

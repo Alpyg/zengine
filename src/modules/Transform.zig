@@ -32,7 +32,7 @@ pub const Transform = struct {
         const R = zm.quatToMat(self.rotation);
         const S = zm.scalingV(self.scale);
 
-        return zm.mul(zm.mul(T, R), S);
+        return zm.mul(S, zm.mul(R, T));
     }
 
     pub inline fn from_mat(m: zm.Mat) Self {
@@ -68,15 +68,6 @@ pub const Transform = struct {
     pub inline fn up(self: *const Self) zm.Vec {
         return zm.normalize3(zm.rotate(self.rotation, zm.Vec{ 0, 1, 0, 0 }));
     }
-
-    pub inline fn getYawPitch(self: *const Self) [2]f32 {
-        const yaw_pitch = [2]f32{ 0, 0 };
-
-        zm.quatToAxisAngle(self.rotation, zm.Vec{ 0, 1, 0, 0 }, &yaw_pitch);
-        zm.quatToAxisAngle(self.rotation, zm.Vec{ 1, 0, 0, 0 }, &yaw_pitch[1]);
-
-        return yaw_pitch;
-    }
 };
 pub const GlobalTransform = struct {
     pub const COMPONENT = {};
@@ -107,6 +98,18 @@ pub const GlobalTransform = struct {
             0.0,
         );
     }
+
+    pub inline fn forward(self: *const Self) zm.Vec {
+        return -zm.normalize3(self.transform[2]);
+    }
+
+    pub inline fn right(self: *const Self) zm.Vec {
+        return zm.normalize3(self.transform[0]);
+    }
+
+    pub inline fn up(self: *const Self) zm.Vec {
+        return zm.normalize3(self.transform[1]);
+    }
 };
 
 pub const Name = struct {
@@ -120,10 +123,8 @@ pub const PropagateParentTransform = System(struct {
     pub fn run(q: Query(.{ z.Transform, z.GlobalTransform, ?Parent(z.GlobalTransform) }, .{})) void {
         var it = q.iter();
         var i: usize = 0;
-        while (it.next()) |t| : (i += 1) {
-            const transform = t[0];
-            const global = t[1];
-            const parent = t[2];
+        while (it.next()) |transforms| : (i += 1) {
+            const transform: *z.Transform, var global: *z.GlobalTransform, const parent: ?*z.GlobalTransform = transforms;
 
             if (parent) |p| {
                 global.transform = zm.mul(p.transform, transform.mat());
