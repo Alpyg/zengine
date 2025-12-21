@@ -13,16 +13,15 @@ const System = z.System;
 
 const GfxModule = @This();
 
-window_name: [:0]const u8 = "ZEngine",
+var window_name: [:0]const u8 = "ZEngine";
 
-pub fn init(self: GfxModule, ecs: *Ecs) void {
-    const gfx = Gfx.init(self);
-
-    _ = ecs.registerResource(gfx)
-        .registerEcs(GfxModule);
+pub fn init(_: GfxModule, ecs: *Ecs) void {
+    _ = ecs.registerEcs(GfxModule);
 }
 
 pub const Gfx = struct {
+    pub const RESOURCE = {};
+
     window: *zglfw.Window = undefined,
     gctx: *zgpu.GraphicsContext = undefined,
 
@@ -35,12 +34,12 @@ pub const Gfx = struct {
     depth_texture: zgpu.TextureHandle = undefined,
     depth_texture_view: zgpu.TextureViewHandle = undefined,
 
-    pub fn init(module: GfxModule) Gfx {
+    pub fn init(_: *Ecs) Gfx {
         var self = Gfx{};
         zglfw.init() catch @panic("Failed to init glfw");
 
         zglfw.windowHint(.client_api, .no_api);
-        self.window = zglfw.Window.create(1280, 720, module.window_name, null) catch @panic("Failed to init window");
+        self.window = zglfw.Window.create(1280, 720, window_name, null) catch @panic("Failed to init window");
 
         const gctx = zgpu.GraphicsContext.create(
             z.allocator,

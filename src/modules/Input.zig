@@ -15,11 +15,12 @@ const System = z.System;
 const InputModule = @This();
 
 pub fn init(_: InputModule, ecs: *Ecs) void {
-    _ = ecs.registerResource(Input.init(ecs))
-        .registerEcs(InputModule);
+    _ = ecs.registerEcs(InputModule);
 }
 
 pub const Input = struct {
+    pub const RESOURCE = {};
+
     key_states: std.AutoHashMap(Key, InputState) = undefined,
     mouse_states: std.AutoHashMap(Mouse, InputState) = undefined,
 

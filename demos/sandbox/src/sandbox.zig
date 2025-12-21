@@ -23,7 +23,9 @@ pub fn main() !void {
         .registerModule(z.DebugModule{})
         .registerModule(z.CameraModule{})
         .registerModule(z.RenderModule{})
-        .registerEcs(ecs);
+        .registerEcs(ecs)
+        .registerEvent(z.Event(Frame))
+        .registerEcs(@This());
 
     setup(&app);
 
@@ -70,3 +72,33 @@ fn setup(app: *z.Ecs) void {
         z.RenderPipeline.init(material),
     });
 }
+
+pub const Frame = struct {
+    frame: usize,
+};
+
+pub const EventTestWriter = z.System(struct {
+    pub const phase = &z.Pipeline.Update;
+
+    var frame: usize = 0;
+
+    pub fn run(
+        event: z.Event(Frame).Writer,
+    ) void {
+        std.log.info("Writer frame: {}", .{frame});
+        event.send(Frame{ .frame = frame }) catch {};
+        frame += 1;
+    }
+});
+
+pub const EventTestReader = z.System(struct {
+    pub const phase = &z.Pipeline.Update;
+
+    pub fn run(
+        event: z.Event(Frame).Reader,
+    ) void {
+        while (event.read()) |frame| {
+            std.log.info("Reader frame: {}", .{frame});
+        }
+    }
+});

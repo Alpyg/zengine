@@ -11,7 +11,6 @@ pub fn Material(comptime shader: []const u8, comptime T: type, comptime V: anyty
     const fields = comptime @typeInfo(T).@"struct".fields;
 
     return struct {
-        pub const COMPONENT = {};
         const Self = @This();
         pub const VertexAttributes = V;
 

@@ -2,14 +2,15 @@ const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-pub const Pipeline = @import("Pipeline.zig");
+const z = @import("../root.zig");
+pub const Event = @import("event.zig").Event;
 pub const Parent = @import("query.zig").Parent;
+pub const Pipeline = @import("Pipeline.zig");
 pub const Query = @import("query.zig").Query;
-pub const With = @import("query.zig").With;
-pub const Without = @import("query.zig").Without;
 pub const Resource = @import("resource.zig").Resource;
 pub const System = @import("system.zig").System;
-const z = @import("../root.zig");
+pub const With = @import("query.zig").With;
+pub const Without = @import("query.zig").Without;
 
 const Ecs = @This();
 
@@ -81,6 +82,14 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
             zflecs.TAG(self.world, T);
             std.log.debug("Registered tag `{s}`", .{@typeName(T)});
         }
+    } else if (@hasDecl(T, "RESOURCE")) {
+        const resource = if (@hasDecl(T, "init"))
+            T.init(self)
+        else
+            T{};
+
+        zflecs.COMPONENT(self.world, T);
+        _ = zflecs.singleton_set(self.world, T, resource);
     } else {
         if (@typeInfo(T) != .@"struct") return self;
 
@@ -104,6 +113,17 @@ pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     } else {
         @compileError("Module should have an init method");
     }
+
+    return self;
+}
+
+pub fn registerEvent(self: *Ecs, E: type) *Ecs {
+    zflecs.COMPONENT(self.world, E);
+    _ = zflecs.singleton_set(self.world, E, E.init(self));
+
+    std.log.debug("Registered event `{s}`", .{@typeName(E)});
+
+    _ = self.registerSystems(E);
 
     return self;
 }

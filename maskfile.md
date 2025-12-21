@@ -3,35 +3,35 @@
 ## run
 
 ```sh
-zig build run
+anyzig build run
 ```
 
 ## demo (demo)
 
 ```sh
-zig build ${demo}-run
+anyzig build ${demo}-run
 ```
 
 ## test
 
 ```sh
-zig build test --summary all
+anyzig build test --summary all
 ```
 
 ## watch
 
 ```sh
-watchexec -r -e zig -- zig build run
+watchexec -r -e anyzig -- zig build run
 ```
 
 ## build
 
 ```sh
-zig build
+anyzig build
 ```
 
 ## release
 
 ```sh
-zig build --release=small
+anyzig build --release=small
 ```

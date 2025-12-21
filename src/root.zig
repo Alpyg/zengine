@@ -9,6 +9,7 @@ pub const zmath = @import("zmath");
 
 // Ecs
 pub const Ecs = @import("ecs/Ecs.zig");
+pub const Event = Ecs.Event;
 pub const Parent = Ecs.Parent;
 pub const Pipeline = Ecs.Pipeline;
 pub const Query = Ecs.Query;
