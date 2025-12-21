@@ -11,11 +11,12 @@ const z = @import("../root.zig");
 const TimeModule = @This();
 
 pub fn init(_: TimeModule, ecs: *z.Ecs) void {
-    _ = ecs.registerResource(Time{})
-        .registerEcs(TimeModule);
+    _ = ecs.registerEcs(TimeModule);
 }
 
 pub const Time = struct {
+    pub const RESOURCE = {};
+
     time: f64 = 0.0,
     delta_time: f32 = 0.0,
     fps_counter: u32 = 0,

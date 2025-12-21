@@ -3,6 +3,7 @@ const zflecs = @import("zflecs");
 pub fn Resource(comptime R: type) type {
     return struct {
         const Self = @This();
+        pub const RESOURCE = {};
 
         resource: *R,
 

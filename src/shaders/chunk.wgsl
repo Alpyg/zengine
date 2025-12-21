@@ -38,7 +38,7 @@ struct VertexOut {
 
     let quad = quad_buffer[qid];
     let pos = quad.vertex[corner].xyz;
-    let uv = unpack2x16float(bitcast<u32>(quad.vertex[corner].w));
+    let uv = unpack2x16float(u32(quad.vertex[corner].w));
 
     var out: VertexOut;
     out.position_clip = (vec4<f32>(x, y, z, 1.0) + vec4<f32>(pos, 1.0)) * object_to_clip;
@@ -54,7 +54,7 @@ struct VertexOut {
 ) -> @location(0) vec4<f32> {
     let size = textureDimensions(texture_image, 0u);
     let tile_size = vec2<u32>(16, 16);
-    
+
     let row_tiles = size.x / tile_size.x;
 
     let tile = vec2<u32>(
@@ -62,7 +62,7 @@ struct VertexOut {
         texture_index / row_tiles
     );
     let texture_uv = (vec2<f32>(tile) * vec2<f32>(tile_size) + uv) / vec2<f32>(size);
-    
+
     let color = textureSample(texture_image, texture_sampler, texture_uv);
 
     return color;
