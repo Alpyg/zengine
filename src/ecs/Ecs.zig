@@ -3,6 +3,7 @@ const std = @import("std");
 const zflecs = @import("zflecs");
 
 const z = @import("../root.zig");
+pub const Assets = @import("assets.zig").Assets;
 pub const Event = @import("event.zig").Event;
 pub const Parent = @import("query.zig").Parent;
 pub const Pipeline = @import("Pipeline.zig");
@@ -20,6 +21,8 @@ pub fn init() Ecs {
     var self = Ecs{ .world = zflecs.init() };
 
     Pipeline.init(&self);
+
+    z.zstbi.init(z.allocator);
 
     return self;
 }
@@ -90,6 +93,8 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
 
         zflecs.COMPONENT(self.world, T);
         _ = zflecs.singleton_set(self.world, T, resource);
+
+        std.log.debug("Registered resource `{s}`", .{@typeName(T)});
     } else {
         if (@typeInfo(T) != .@"struct") return self;
 

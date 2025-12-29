@@ -6,9 +6,11 @@ pub const zglfw = @import("zglfw");
 pub const zgpu = @import("zgpu");
 pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
+pub const zstbi = @import("zstbi");
 
 // Ecs
 pub const Ecs = @import("ecs/Ecs.zig");
+pub const Assets = Ecs.Assets;
 pub const Event = Ecs.Event;
 pub const Parent = Ecs.Parent;
 pub const Pipeline = Ecs.Pipeline;

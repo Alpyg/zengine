@@ -6,8 +6,13 @@ const zm = @import("zmath");
 
 const z = @import("../../root.zig");
 
+const ShaderSrc = struct {
+    vertex: [*:0]const u8,
+    fragment: [*:0]const u8,
+};
+
 /// RenderPipeline for a given type.
-pub fn Material(comptime shader: []const u8, comptime T: type, comptime V: anytype) type {
+pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: anytype) type {
     const fields = comptime @typeInfo(T).@"struct".fields;
 
     return struct {
@@ -28,8 +33,8 @@ pub fn Material(comptime shader: []const u8, comptime T: type, comptime V: anyty
         pub fn init(material: T) Self {
             const gctx = z.gctx;
 
-            const vs_module = zgpu.createWgslShaderModule(gctx.device, @embedFile("../../shaders/" ++ shader), "vs");
-            const fs_module = zgpu.createWgslShaderModule(gctx.device, @embedFile("../../shaders/" ++ shader), "fs");
+            const vs_module = zgpu.createWgslShaderModule(gctx.device, src.vertex, "vs");
+            const fs_module = zgpu.createWgslShaderModule(gctx.device, src.fragment, "fs");
 
             var offset: u32 = 0;
             var bind_group_entries: [fields.len]zgpu.BindGroupEntryInfo = undefined;

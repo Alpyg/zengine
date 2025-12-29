@@ -24,7 +24,10 @@ pub const TriangleMesh = Mesh(.{
 });
 
 pub const StandardMaterial = Material(
-    "standard.wgsl",
+    .{
+        .vertex = @embedFile("../shaders/standard.wgsl"),
+        .fragment = @embedFile("../shaders/standard.wgsl"),
+    },
     struct {
         object_to_clip: zm.Mat,
     },
