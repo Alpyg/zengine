@@ -9,7 +9,7 @@ anyzig build run
 ## demo (demo)
 
 ```sh
-anyzig build ${demo}-run
+anyzig build ${demo}-run --release=fast
 ```
 
 ## test
@@ -21,7 +21,7 @@ anyzig build test --summary all
 ## watch
 
 ```sh
-watchexec -r -e anyzig -- zig build run
+watchexec -c -r -e zig -- anyzig build sandbox-run
 ```
 
 ## build

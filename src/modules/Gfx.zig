@@ -37,9 +37,10 @@ pub const Gfx = struct {
     pub fn init(_: *Ecs) Gfx {
         var self = Gfx{};
         zglfw.init() catch @panic("Failed to init glfw");
+        errdefer zglfw.terminate();
 
         zglfw.windowHint(.client_api, .no_api);
-        self.window = zglfw.Window.create(1280, 720, window_name, null) catch @panic("Failed to init window");
+        self.window = zglfw.Window.create(1280, 720, window_name, null, null) catch @panic("Failed to init window");
 
         const gctx = zgpu.GraphicsContext.create(
             z.allocator,

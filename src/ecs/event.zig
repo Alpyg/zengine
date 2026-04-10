@@ -10,7 +10,11 @@ pub fn Event(comptime T: type) type {
         const Self = @This();
         pub const EVENT_QUEUE = {};
 
-        pub const Queue = std.DoublyLinkedList(T);
+        pub const Queue = std.DoublyLinkedList;
+        pub const Item = struct {
+            data: T,
+            node: Queue.Node = .{},
+        };
 
         writer: WriterImpl = undefined,
         reader: ReaderImpl = undefined,
@@ -51,9 +55,9 @@ pub fn Event(comptime T: type) type {
 
             pub inline fn send(self: *WriterImpl, value: T) !void {
                 var allocator = self.arena.allocator();
-                const node = try allocator.create(Queue.Node);
-                node.*.data = value;
-                self.queue.append(node);
+                const item = try allocator.create(Item);
+                item.data = value;
+                self.queue.append(&item.node);
             }
 
             pub inline fn clear(self: *WriterImpl) void {
@@ -85,7 +89,8 @@ pub fn Event(comptime T: type) type {
                     self.node.?.next;
 
                 if (self.node) |node| {
-                    return node.data;
+                    const item: *Item = @fieldParentPtr("node", node);
+                    return item.data;
                 }
                 return null;
             }

@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = options.target,
         .optimize = options.optimize,
+        .strip = false,
         .imports = &.{
             .{ .name = "zglfw", .module = zglfw_dep.module("root") },
             .{ .name = "zgpu", .module = zgpu_dep.module("root") },

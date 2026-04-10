@@ -11,6 +11,7 @@ pub fn build(b: *std.Build, options: anytype, mod: anytype) *std.Build.Step.Comp
             .root_source_file = b.path(b.pathJoin(&.{ src_path, demo_name ++ ".zig" })),
             .target = options.target,
             .optimize = options.optimize,
+            .strip = false,
             .imports = &.{
                 .{ .name = "z", .module = mod },
             },

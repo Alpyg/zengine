@@ -51,17 +51,17 @@ pub const DebugRender = System(struct {
                 .menu_bar = true,
             },
         })) {
-            _ = zgui.DockSpace("Dockspace", .{ 0, 0 }, .{});
+            _ = zgui.dockSpace("Dockspace", .{ 0, 0 }, .{});
         }
         zgui.end();
 
         if (zgui.begin("Main", .{})) {
-            _ = zgui.DockSpace("MainDockspace", .{ 0, 0 }, .{});
+            _ = zgui.dockSpace("MainDockspace", .{ 0, 0 }, .{});
         }
         zgui.end();
 
         if (zgui.begin("Tool", .{})) {
-            _ = zgui.DockSpace("ToolDockspace", .{ 0, 0 }, .{});
+            _ = zgui.dockSpace("ToolDockspace", .{ 0, 0 }, .{});
         }
         zgui.end();
 
@@ -80,7 +80,8 @@ pub const DebugUIViewportSystem = z.System(struct {
                 const avail = zgui.getContentRegionAvail();
 
                 const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
-                zgui.image(tex_id, .{ .w = avail[0], .h = avail[1] });
+                const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @enumFromInt(@intFromPtr(tex_id)) };
+                zgui.image(tex_ref, .{ .w = avail[0], .h = avail[1] });
             }
             zgui.end();
         }

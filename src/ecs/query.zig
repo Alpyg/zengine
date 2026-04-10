@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const z = @import("../root.zig");
 const zflecs = @import("zflecs");
 
 pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
@@ -10,7 +11,7 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     const filters_info = @typeInfo(@TypeOf(Filters)).@"struct";
 
     if (components_info.fields.len == 0) {
-        @compileError("Expected at least one component in query ");
+        @compileError("Expected at least one component in query");
     }
 
     comptime var ComponentTypes: [components_info.fields.len]type = undefined;
@@ -168,9 +169,11 @@ fn QueryIter(comptime QueryTypes: anytype) type {
         it: zflecs.iter_t,
         index: usize = 0,
         tables: ComponentsTable = undefined,
+        started: bool = false,
 
         pub fn init(world: *zflecs.world_t, query: *zflecs.query_t) Self {
-            return Self{ .it = zflecs.query_iter(world, query) };
+            const it = zflecs.query_iter(world, query);
+            return Self{ .it = it };
         }
 
         pub fn count(self: *Self) usize {
@@ -178,8 +181,11 @@ fn QueryIter(comptime QueryTypes: anytype) type {
         }
 
         pub fn next(self: *Self) ?Components {
-            if (self.index >= self.tables[0].len) {
-                if (!zflecs.iter_next(&self.it)) return null;
+            if (!self.started or self.index >= self.tables[0].len) {
+                if (!zflecs.query_next(&self.it)) {
+                    // zflecs.iter_fini(&self.it);
+                    return null;
+                }
                 self.index = 0;
 
                 inline for (QueryTypes, 0..) |T, i| {
@@ -190,6 +196,7 @@ fn QueryIter(comptime QueryTypes: anytype) type {
                         else => @compileError("Expected struct, pointer or optional component"),
                     }
                 }
+                self.started = true;
             }
 
             defer self.index += 1;

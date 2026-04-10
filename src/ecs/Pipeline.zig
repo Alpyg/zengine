@@ -5,7 +5,6 @@ const Ecs = @import("Ecs.zig");
 pub var First: zflecs.entity_t = undefined;
 
 pub var PreUpdate: zflecs.entity_t = undefined;
-pub var StateTransition: zflecs.entity_t = undefined;
 
 pub var FixedFirst: zflecs.entity_t = undefined;
 pub var FixedPreUpdate: zflecs.entity_t = undefined;
@@ -25,8 +24,7 @@ pub var Last: zflecs.entity_t = undefined;
 pub fn init(ecs: *Ecs) void {
     _ = ecs.registerPipeline(&First, null)
         .registerPipeline(&PreUpdate, First)
-        .registerPipeline(&StateTransition, PreUpdate)
-        .registerPipeline(&FixedFirst, StateTransition)
+        .registerPipeline(&FixedFirst, PreUpdate)
         .registerPipeline(&FixedPreUpdate, FixedFirst)
         .registerPipeline(&FixedUpdate, FixedPreUpdate)
         .registerPipeline(&FixedPostUpdate, FixedUpdate)
