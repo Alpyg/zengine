@@ -2,14 +2,12 @@ const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-pub fn System(comptime S: anytype) type {
-    if (!@hasDecl(S, "phase")) @compileError("Expected system to have a phase declaration");
-
+pub fn System(phase: *zflecs.entity_t, comptime S: anytype) type {
     const param_types = @typeInfo(@TypeOf(S.run)).@"fn".param_types;
 
     return struct {
-        pub const name = S.name;
-        pub const phase = S.phase;
+        pub const Name = @typeName(S);
+        pub const Phase = phase;
 
         const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
         var args_tuple: ArgsTupleType = undefined;

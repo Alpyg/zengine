@@ -6,15 +6,10 @@ pub const Key = zsdl.Scancode;
 pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
 
 const z = @import("../root.zig");
-const Ecs = z.Ecs;
-const Gfx = z.Gfx;
-const Pipeline = z.Pipeline;
-const Resource = z.Resource;
-const System = z.System;
 
 const InputModule = @This();
 
-pub fn init(_: InputModule, ecs: *Ecs) void {
+pub fn init(_: InputModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(InputModule);
 }
 
@@ -28,9 +23,9 @@ pub const Input = struct {
     cursor_position: [2]f32 = undefined,
     mouse_delta: [2]f32 = undefined,
 
-    gfx: *const Gfx = undefined,
+    gfx: *const z.Gfx = undefined,
 
-    pub fn init(ecs: *Ecs) Input {
+    pub fn init(ecs: *z.Ecs) Input {
         _ = ecs.registerEvent(z.Event(KeyEvent))
             .registerEvent(z.Event(MouseButtonEvent))
             .registerEvent(z.Event(MouseMotionEvent));
@@ -40,7 +35,7 @@ pub const Input = struct {
             .mouse_states = std.AutoHashMap(Mouse, InputState).init(ecs.allocator),
             .cursor_position = .{ 0, 0 },
             .mouse_delta = .{ 0, 0 },
-            .gfx = zflecs.singleton_get(ecs.world, Gfx).?,
+            .gfx = zflecs.singleton_get(ecs.world, z.Gfx).?,
         };
     }
 
@@ -106,11 +101,9 @@ pub const MouseMotionEvent = struct {
     position: [2]f32,
 };
 
-pub const LoadInput = System(struct {
-    pub const phase = &Pipeline.First;
-
+pub const LoadInput = z.System(&z.Pipeline.First, struct {
     pub fn run(
-        res_input: Resource(Input),
+        res_input: z.Resource(Input),
         key_writer: z.Event(KeyEvent).Writer,
         button_writer: z.Event(MouseButtonEvent).Writer,
         motion_writer: z.Event(MouseMotionEvent).Writer,
@@ -192,9 +185,7 @@ pub const LoadInput = System(struct {
     }
 });
 
-pub const InputEventClearSystem = System(struct {
-    pub const phase = &Pipeline.Last;
-
+pub const InputEventClearSystem = z.System(&z.Pipeline.Last, struct {
     pub fn run(
         key: z.Event(KeyEvent).Writer,
         button: z.Event(MouseButtonEvent).Writer,

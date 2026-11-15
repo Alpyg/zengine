@@ -117,9 +117,7 @@ pub const Name = struct {
     value: []const u8,
 };
 
-pub const PropagateParentTransform = System(struct {
-    pub const phase = &Pipeline.PostUpdate;
-
+pub const PropagateParentTransform = System(&Pipeline.PostUpdate, struct {
     pub fn run(q: Query(.{ z.Transform, z.GlobalTransform, ?Parent(z.GlobalTransform) }, .{})) void {
         var it = q.iter();
         var i: usize = 0;

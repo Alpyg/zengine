@@ -75,7 +75,7 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
 
 pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.phase.*, T.run);
+        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
         if (@hasDecl(T, "init")) T.init(self.world);
@@ -193,7 +193,7 @@ pub fn registerPipeline(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs
 }
 
 inline fn isSystem(comptime T: type) bool {
-    return @hasDecl(T, "phase") and @hasDecl(T, "run");
+    return @hasDecl(T, "Phase") and @hasDecl(T, "run");
 }
 
 fn deinitSystems(comptime T: type) void {

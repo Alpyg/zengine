@@ -5,32 +5,24 @@ const zflecs = @import("zflecs");
 const zgui = @import("zgui");
 
 const z = @import("../root.zig");
-const Ecs = z.Ecs;
-const Gfx = z.Gfx;
-const Input = z.Input;
-const Pipeline = z.Pipeline;
-const Resource = z.Resource;
-const System = z.System;
 
 const DebugModule = @This();
 
-pub fn init(_: DebugModule, ecs: *Ecs) void {
+pub fn init(_: DebugModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(DebugModule);
 }
 
-pub const DebugRender = System(struct {
-    pub const phase = &z.Pipeline.First;
-
+pub const DebugRender = z.System(&z.Pipeline.First, struct {
     pub fn run(
-        res_gfx: Resource(Gfx),
-        // res_input: Resource(Input),
+        res_gfx: z.Resource(z.Gfx),
+        res_input: z.Resource(z.Input),
     ) void {
         const gfx = res_gfx.get();
-        // const input = res_input.getMut();
+        const input = res_input.getMut();
 
-        // if (input.getKey(.escape).just_pressed) {
-        //     input.toggleCursor();
-        // }
+        if (input.getKey(.escape).just_pressed) {
+            input.toggleCursor();
+        }
 
         zgui.pushStyleVar1f(.{ .idx = zgui.StyleVar.window_rounding, .v = 0 });
         zgui.pushStyleVar2f(.{ .idx = zgui.StyleVar.window_padding, .v = .{ 0, 0 } });
@@ -72,9 +64,7 @@ pub const DebugRender = System(struct {
     }
 });
 
-pub const DebugUIViewportSystem = z.System(struct {
-    pub const phase = &z.Pipeline.Render;
-
+pub const DebugUIViewportSystem = z.System(&z.Pipeline.Render, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
         const gfx = res_gfx.get();
 

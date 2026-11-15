@@ -5,16 +5,10 @@ const zflecs = @import("zflecs");
 const zm = @import("zmath");
 
 const z = @import("../root.zig");
-const Ecs = z.Ecs;
-const Parent = z.Parent;
-const Pipeline = z.Pipeline;
-const Query = z.Query;
-const Resource = z.Resource;
-const System = z.System;
 
 const CameraModule = @This();
 
-pub fn init(_: CameraModule, ecs: *Ecs) void {
+pub fn init(_: CameraModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(CameraModule);
 }
 
@@ -63,12 +57,10 @@ pub const Camera = struct {
     }
 };
 
-pub const UpdateCameraMatricesSystem = System(struct {
-    pub const phase = &Pipeline.PreRender;
-
+pub const UpdateCameraMatricesSystem = z.System(&z.Pipeline.PreRender, struct {
     pub fn run(
-        gctx: Resource(z.Gfx),
-        q_camera: Query(.{ z.Camera, z.GlobalTransform }, .{}),
+        gctx: z.Resource(z.Gfx),
+        q_camera: z.Query(.{ z.Camera, z.GlobalTransform }, .{}),
     ) void {
         const size = gctx.get().getRenderTargetSize();
 

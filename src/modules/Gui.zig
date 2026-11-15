@@ -4,44 +4,36 @@ const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 
 const z = @import("../root.zig");
-const Ecs = z.Ecs;
-const Gfx = z.Gfx;
-const Pipeline = z.Pipeline;
-const Resource = z.Resource;
-const System = z.System;
 
 const GuiModule = @This();
 
-pub fn init(_: GuiModule, ecs: *Ecs) void {
-    _ = ecs;
-    // zgui.init(ecs.allocator);
-    //
-    // _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
-    //
-    // const gfx: *const Gfx = zflecs.singleton_get(ecs.world, Gfx).?;
-    //
-    // zgui.backend.init(
-    //     gfx.window,
-    //     gfx.gctx.device,
-    //     @backingInt(zgpu.GraphicsContext.swapchain_format),
-    //     @backingInt(wgpu.TextureFormat.undef),
-    // );
-    //
-    // zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
-    // zgui.getStyle().scaleAllSizes(1);
-    //
-    // _ = ecs.registerEcs(GuiModule);
+pub fn init(_: GuiModule, ecs: *z.Ecs) void {
+    zgui.init(ecs.allocator);
+
+    _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
+
+    const gfx: *const z.Gfx = zflecs.singleton_get(ecs.world, z.Gfx).?;
+
+    zgui.backend.init(
+        gfx.window,
+        gfx.gctx.device,
+        @backingInt(zgpu.GraphicsContext.swapchain_format),
+        @backingInt(wgpu.TextureFormat.undef),
+    );
+
+    zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
+    zgui.getStyle().scaleAllSizes(1);
+
+    _ = ecs.registerEcs(GuiModule);
 }
 
-pub fn deinit(_: *Ecs) void {
+pub fn deinit(_: *z.Ecs) void {
     zgui.deinit();
     zgui.backend.deinit();
 }
 
-pub const PreRender = System(struct {
-    pub const phase = &Pipeline.First;
-
-    pub fn run(r_gfx: Resource(Gfx)) void {
+pub const PreRender = z.System(&z.Pipeline.First, struct {
+    pub fn run(r_gfx: z.Resource(z.Gfx)) void {
         const gfx = r_gfx.get();
 
         zgui.backend.newFrame(
@@ -51,10 +43,8 @@ pub const PreRender = System(struct {
     }
 });
 
-pub const Render = System(struct {
-    pub const phase = &Pipeline.PostRender;
-
-    pub fn run(r_gfx: Resource(Gfx)) void {
+pub const Render = z.System(&z.Pipeline.PostRender, struct {
+    pub fn run(r_gfx: z.Resource(z.Gfx)) void {
         const gfx = r_gfx.get();
 
         if (!gfx.debug) {
