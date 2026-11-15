@@ -1,6 +1,5 @@
 const std = @import("std");
 
-const wgpu = @import("zgpu").wgpu;
 const zsdl = @import("zsdl");
 
 const z = @import("../root.zig");
@@ -20,18 +19,19 @@ pub const Gfx = struct {
     window: *zsdl.Window = undefined,
 
     cmd: ?*zsdl.GPUCommandBuffer = undefined,
+
     swapchain_texture: ?*zsdl.GPUTexture = undefined,
+    swapchain_format: zsdl.GPUTextureFormat = undefined,
     swapchain_w: u32 = undefined,
     swapchain_h: u32 = undefined,
 
-    allocator: std.mem.Allocator = undefined,
+    debug: bool = false,
 
     pub fn init(ecs: *z.Ecs) Gfx {
         var self = Gfx{};
-        self.allocator = ecs.allocator;
 
-        zsdl.init(.{ .audio = true, .video = true }) catch |err| {
-            std.debug.panic("Failed to init sdl: {any}", .{err});
+        zsdl.init(.{ .audio = true, .video = true }) catch {
+            std.debug.panic("Failed to init sdl: {any}", .{zsdl.getError().?});
         };
         errdefer zsdl.quit();
 
@@ -42,18 +42,30 @@ pub const Gfx = struct {
             std.log.info("  Driver {d}: {s}", .{ i, zsdl.getGPUDriver(i) });
         }
 
-        self.device = zsdl.createGPUDevice(.{ .spirv = true }, true, null) catch |err| {
-            std.debug.panic("Failed to init Device: {any}", .{err});
+        self.device = zsdl.createGPUDevice(.{ .spirv = true }, true, null) catch {
+            std.debug.panic("Failed to init Device: {s}", .{zsdl.getError().?});
         };
-        self.window = zsdl.createWindow(window_name, 1280, 720, .{ .vulkan = true }) catch |err| {
-            std.debug.panic("Failed to init Window: {any}", .{err});
+        self.window = zsdl.createWindow(window_name, 1280, 720, .{ .vulkan = true }) catch {
+            std.debug.panic("Failed to init Window: {s}", .{zsdl.getError().?});
         };
-        zsdl.claimWindowForGPUDevice(self.device, self.window) catch |err| {
-            std.debug.panic("Failed to claim Window for Device: {any}", .{err});
+        zsdl.claimWindowForGPUDevice(self.device, self.window) catch {
+            std.debug.panic("Failed to claim Window for Device: {s}", .{zsdl.getError().?});
         };
-        self.cmd = zsdl.acquireGPUCommandBuffer(self.device) catch |err| {
-            std.debug.panic("Failed to aquire GPU Command Buffer: {any}", .{err});
+        self.cmd = zsdl.acquireGPUCommandBuffer(self.device) catch {
+            std.debug.panic("Failed to aquire GPU Command Buffer: {s}", .{zsdl.getError().?});
         };
+        zsdl.waitAndAcquireGPUSwapchainTexture(
+            self.cmd.?,
+            self.window,
+            &self.swapchain_texture,
+            &self.swapchain_w,
+            &self.swapchain_h,
+        ) catch {
+            std.debug.panic("Could not acquire swapchain: {s}", .{zsdl.getError().?});
+        };
+        self.swapchain_format = zsdl.getGPUSwapchainTextureFormat(self.device, self.window);
+
+        _ = ecs.registerResource(self);
 
         return self;
     }
@@ -132,8 +144,18 @@ pub const PreRender = z.System(&z.Pipeline.PreRender, struct {
     pub fn run(res_gfx: z.Resource(Gfx)) void {
         var gfx = res_gfx.getMut();
 
-        gfx.cmd = zsdl.acquireGPUCommandBuffer(gfx.device) catch |err| {
-            std.debug.panic("Could not acquire GPU Command Buffer: {any}", .{err});
+        gfx.cmd = zsdl.acquireGPUCommandBuffer(gfx.device) catch {
+            std.debug.panic("Could not acquire GPU Command Buffer: {s}", .{zsdl.getError().?});
+        };
+
+        zsdl.waitAndAcquireGPUSwapchainTexture(
+            gfx.cmd.?,
+            gfx.window,
+            &gfx.swapchain_texture,
+            &gfx.swapchain_w,
+            &gfx.swapchain_h,
+        ) catch {
+            std.debug.panic("Could not acquire swapchain: {s}", .{zsdl.getError().?});
         };
     }
 });
@@ -146,18 +168,8 @@ pub const Render = z.System(&z.Pipeline.Last, struct {
             std.debug.panic("No GPU Command Buffer acquired", .{});
         };
 
-        zsdl.waitAndAcquireGPUSwapchainTexture(
-            cmd,
-            gfx.window,
-            &gfx.swapchain_texture,
-            &gfx.swapchain_w,
-            &gfx.swapchain_h,
-        ) catch |err| {
-            std.debug.panic("Could not acquire swapchain: {any}", .{err});
-        };
-
-        _ = zsdl.submitGPUCommandBuffer(cmd) catch |err| {
-            std.debug.panic("Could not submit GPU Command Buffer: {any}", .{err});
+        _ = zsdl.submitGPUCommandBuffer(cmd) catch {
+            std.debug.panic("Could not submit GPU Command Buffer: {s}", .{zsdl.getError().?});
         };
 
         gfx.cmd = null;

@@ -1,6 +1,7 @@
-const wgpu = @import("zgpu").wgpu;
+const std = @import("std");
+
 const zflecs = @import("zflecs");
-const zgpu = @import("zgpu");
+const zsdl = @import("zsdl");
 const zgui = @import("zgui");
 
 const z = @import("../root.zig");
@@ -16,9 +17,11 @@ pub fn init(_: GuiModule, ecs: *z.Ecs) void {
 
     zgui.backend.init(
         gfx.window,
-        gfx.gctx.device,
-        @backingInt(zgpu.GraphicsContext.swapchain_format),
-        @backingInt(wgpu.TextureFormat.undef),
+        .{
+            .device = gfx.device,
+            .color_target_format = @backingInt(gfx.swapchain_format),
+            .msaa_samples = 0,
+        },
     );
 
     zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
@@ -28,59 +31,48 @@ pub fn init(_: GuiModule, ecs: *z.Ecs) void {
 }
 
 pub fn deinit(_: *z.Ecs) void {
-    zgui.deinit();
     zgui.backend.deinit();
+    zgui.deinit();
 }
 
 pub const PreRender = z.System(&z.Pipeline.First, struct {
     pub fn run(r_gfx: z.Resource(z.Gfx)) void {
         const gfx = r_gfx.get();
 
-        zgui.backend.newFrame(
-            gfx.gctx.swapchain_descriptor.width,
-            gfx.gctx.swapchain_descriptor.height,
-        );
+        zgui.backend.newFrame(gfx.swapchain_w, gfx.swapchain_h, 1.0);
     }
 });
 
 pub const Render = z.System(&z.Pipeline.PostRender, struct {
-    pub fn run(r_gfx: z.Resource(z.Gfx)) void {
-        const gfx = r_gfx.get();
+    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
+        const gfx = res_gfx.getMut();
 
-        if (!gfx.debug) {
-            zgui.endFrame();
-            return;
-        }
-
-        const back_buffer_view = gfx.gctx.swapchain.getCurrentTextureView();
-        defer back_buffer_view.release();
-
-        const color_attachments = [_]wgpu.RenderPassColorAttachment{.{
-            .view = back_buffer_view,
-            .load_op = .clear,
-            .store_op = .store,
-        }};
-        const render_pass_info = wgpu.RenderPassDescriptor{
-            .color_attachment_count = color_attachments.len,
-            .color_attachments = &color_attachments,
+        const cmd = gfx.cmd orelse {
+            std.debug.panic("No GPU Command Buffer acquired", .{});
         };
-        const pass = gfx.encoder.beginRenderPass(render_pass_info);
-        defer {
-            pass.end();
-            pass.release();
+
+        zgui.render();
+
+        if (gfx.swapchain_texture) |swapchain_tex| {
+            var color_target = zsdl.GPUColorTargetInfo{
+                .texture = swapchain_tex,
+                .mip_level = 0,
+                .layer_or_depth_plane = 0,
+                .clear_color = .{ .r = 0.1, .g = 0.1, .b = 0.1, .a = 1.0 },
+                .load_op = .clear,
+                .store_op = .store,
+                .cycle = true,
+            };
+            zgui.backend.prepareDrawData(cmd);
+            const render_pass = zsdl.beginGPURenderPass(
+                cmd,
+                @ptrCast(&color_target),
+                1,
+                null,
+            );
+            defer zsdl.endGPURenderPass(render_pass);
+
+            zgui.backend.renderDrawData(cmd, render_pass, null);
         }
-
-        const size = gfx.getRenderTargetSize();
-        pass.setViewport(
-            0,
-            0,
-            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
-            @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
-            0,
-            1,
-        );
-        pass.setScissorRect(0, 0, size[0], size[1]);
-
-        zgui.backend.draw(pass);
     }
 });

@@ -8,7 +8,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     };
 
-    // const zglfw_dep = b.dependency("zglfw", .{});
     const zsdl_dep = b.dependency("zsdl", .{});
     const zgpu_dep = b.dependency("zgpu", .{});
     const zflecs_dep = b.dependency("zflecs", .{});
@@ -29,7 +28,6 @@ pub fn build(b: *std.Build) void {
         .optimize = options.optimize,
         .strip = false,
         .imports = &.{
-            // .{ .name = "zglfw", .module = zglfw_dep.module("root") },
             .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") },
             .{ .name = "zgpu", .module = zgpu_dep.module("root") },
             .{ .name = "zflecs", .module = zflecs_dep.module("root") },
@@ -40,7 +38,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zstbi", .module = zstbi_dep.module("root") },
         },
     });
-    // mod.linkLibrary(zglfw_dep.artifact("glfw"));
     mod.linkSystemLibrary("sdl3", .{});
     mod.linkLibrary(zgpu_dep.artifact("zdawn"));
     mod.linkLibrary(zflecs_dep.artifact("flecs"));

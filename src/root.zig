@@ -1,11 +1,8 @@
 const std = @import("std");
 
-// pub const wgpu = @import("zgpu").wgpu;
 pub const zflecs = @import("zflecs");
-// pub const zglfw = @import("zglfw");
 pub const zsdl = @import("zsdl");
-// pub const zgpu = @import("zgpu");
-// pub const zgui = @import("zgui");
+pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
 pub const zstbi = @import("zstbi");
 
@@ -25,7 +22,7 @@ pub const Without = Ecs.Without;
 pub const CameraModule = @import("modules/Camera.zig");
 pub const DebugModule = @import("modules/Debug.zig");
 pub const GfxModule = @import("modules/Gfx.zig");
-// pub const GuiModule = @import("modules/Gui.zig");
+pub const GuiModule = @import("modules/Gui.zig");
 pub const InputModule = @import("modules/Input.zig");
 // pub const RenderModule = @import("modules/Render.zig");
 pub const TimeModule = @import("modules/Time.zig");
@@ -43,8 +40,6 @@ pub const Name = TransformModule.Name;
 pub const Time = TimeModule.Time;
 pub const Transform = TransformModule.Transform;
 // pub const TriangleMesh = RenderModule.TriangleMesh;
-
-// pub var gctx: *zgpu.GraphicsContext = undefined;
 
 test {
     _ = Ecs;

@@ -30,8 +30,8 @@ pub const DebugRender = z.System(&z.Pipeline.First, struct {
         const main_viewport = zgui.getMainViewport();
         zgui.setNextWindowPos(.{ .x = 0, .y = 0 });
         zgui.setNextWindowSize(.{
-            .w = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.width)),
-            .h = @as(f32, @floatFromInt(gfx.gctx.swapchain_descriptor.height)),
+            .w = @as(f32, @floatFromInt(gfx.swapchain_w)),
+            .h = @as(f32, @floatFromInt(gfx.swapchain_h)),
         });
         zgui.setNextWindowViewport(main_viewport.getId());
 
@@ -66,15 +66,15 @@ pub const DebugRender = z.System(&z.Pipeline.First, struct {
 
 pub const DebugUIViewportSystem = z.System(&z.Pipeline.Render, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
-        const gfx = res_gfx.get();
+        _ = res_gfx.get();
 
         if (zgui.begin("Main", .{})) {
             if (zgui.begin("Viewport", .{})) {
-                const avail = zgui.getContentRegionAvail();
+                // const avail = zgui.getContentRegionAvail();
 
-                const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
-                const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @fromBackingInt(@intCast(@intFromPtr(tex_id))) };
-                zgui.image(tex_ref, .{ .w = avail[0], .h = avail[1] });
+                // const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
+                // const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @fromBackingInt(@intCast(@intFromPtr(tex_id))) };
+                // zgui.image(tex_ref, .{ .w = avail[0], .h = avail[1] });
             }
             zgui.end();
         }
