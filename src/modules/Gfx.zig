@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const wgpu = @import("zgpu").wgpu;
-const zglfw = @import("zglfw");
+const zsdl = @import("zsdl");
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 
@@ -22,7 +22,7 @@ pub fn init(_: GfxModule, ecs: *Ecs) void {
 pub const Gfx = struct {
     pub const RESOURCE = {};
 
-    window: *zglfw.Window = undefined,
+    window: *zsdl.Window = undefined,
     gctx: *zgpu.GraphicsContext = undefined,
 
     encoder: wgpu.CommandEncoder = undefined,
@@ -34,41 +34,27 @@ pub const Gfx = struct {
     depth_texture: zgpu.TextureHandle = undefined,
     depth_texture_view: zgpu.TextureViewHandle = undefined,
 
-    pub fn init(_: *Ecs) Gfx {
+    allocator: std.mem.Allocator = undefined,
+
+    pub fn init(ecs: *Ecs) Gfx {
         var self = Gfx{};
-        zglfw.init() catch @panic("Failed to init glfw");
-        errdefer zglfw.terminate();
+        zsdl.init(.{ .audio = true, .video = true }) catch @panic("Failed to init sdl");
+        errdefer zsdl.quit();
 
-        zglfw.windowHint(.client_api, .no_api);
-        self.window = zglfw.Window.create(1280, 720, window_name, null, null) catch @panic("Failed to init window");
-
-        const gctx = zgpu.GraphicsContext.create(
-            z.allocator,
-            .{
-                .window = self.window,
-                .fn_getTime = @ptrCast(&zglfw.getTime),
-                .fn_getFramebufferSize = @ptrCast(&zglfw.Window.getFramebufferSize),
-                .fn_getWin32Window = @ptrCast(&zglfw.getWin32Window),
-                .fn_getX11Display = @ptrCast(&zglfw.getX11Display),
-                .fn_getX11Window = @ptrCast(&zglfw.getX11Window),
-                .fn_getWaylandDisplay = @ptrCast(&zglfw.getWaylandDisplay),
-                .fn_getWaylandSurface = @ptrCast(&zglfw.getWaylandWindow),
-                .fn_getCocoaWindow = @ptrCast(&zglfw.getCocoaWindow),
-            },
-            .{},
-        ) catch @panic("Failed to initialize graphics context");
-        errdefer gctx.destroy(z.allocator);
-
-        self.gctx = gctx;
-        self.refreshRenderTargets();
-        z.gctx = gctx;
+        self.window = zsdl.Window.create(
+            window_name,
+            1280,
+            720,
+            .{ .vulkan = true },
+        ) catch @panic("Failed to init window");
+        self.allocator = ecs.allocator;
 
         return self;
     }
 
     pub fn deinit(self: *Gfx) void {
-        self.gctx.destroy(z.allocator);
-        zglfw.terminate();
+        // self.gctx.destroy(self.allocator);
+        self.window.destroy();
     }
 
     pub fn getRenderTarget(self: *const Gfx) wgpu.TextureView {

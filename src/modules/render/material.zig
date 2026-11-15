@@ -13,7 +13,7 @@ const ShaderSrc = struct {
 
 /// RenderPipeline for a given type.
 pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: anytype) type {
-    const fields = comptime @typeInfo(T).@"struct".fields;
+    const fields = comptime @typeInfo(T).@"struct";
 
     return struct {
         const Self = @This();
@@ -37,11 +37,11 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: anytype) 
             const fs_module = zgpu.createWgslShaderModule(gctx.device, src.fragment, "fs");
 
             var offset: u32 = 0;
-            var bind_group_entries: [fields.len]zgpu.BindGroupEntryInfo = undefined;
-            var bind_group_layout_entries: [fields.len]wgpu.BindGroupLayoutEntry = undefined;
-            inline for (fields, 0..) |field, i| {
-                const value = @field(material, field.name);
-                switch (field.type) {
+            var bind_group_entries: [fields.field_names.len]zgpu.BindGroupEntryInfo = undefined;
+            var bind_group_layout_entries: [fields.field_names.len]wgpu.BindGroupLayoutEntry = undefined;
+            inline for (fields.field_names, fields.field_types, 0..) |field_name, field_type, i| {
+                const value = @field(material, field_name);
+                switch (field_type) {
                     zgpu.TextureViewHandle => {
                         bind_group_entries[i] = .{
                             .binding = i,
@@ -72,12 +72,12 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: anytype) 
                             .binding = i,
                             .buffer_handle = gctx.uniforms.buffer,
                             .offset = 0,
-                            .size = @sizeOf(field.type),
+                            .size = @sizeOf(field_type),
                         };
                         bind_group_layout_entries[i] = zgpu.bufferEntry(i, .{ .vertex = true }, .uniform, true, 0);
                     },
                 }
-                offset += @sizeOf(field.type);
+                offset += @sizeOf(field_type);
             }
 
             const bind_group_layout = gctx.createBindGroupLayout(&bind_group_layout_entries);

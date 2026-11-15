@@ -13,23 +13,24 @@ const System = z.System;
 const GuiModule = @This();
 
 pub fn init(_: GuiModule, ecs: *Ecs) void {
-    zgui.init(z.allocator);
-
-    _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
-
-    const gfx: *const Gfx = zflecs.singleton_get(ecs.world, Gfx).?;
-
-    zgui.backend.init(
-        gfx.window,
-        gfx.gctx.device,
-        @intFromEnum(zgpu.GraphicsContext.swapchain_format),
-        @intFromEnum(wgpu.TextureFormat.undef),
-    );
-
-    zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
-    zgui.getStyle().scaleAllSizes(1);
-
-    _ = ecs.registerEcs(GuiModule);
+    _ = ecs;
+    // zgui.init(ecs.allocator);
+    //
+    // _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
+    //
+    // const gfx: *const Gfx = zflecs.singleton_get(ecs.world, Gfx).?;
+    //
+    // zgui.backend.init(
+    //     gfx.window,
+    //     gfx.gctx.device,
+    //     @backingInt(zgpu.GraphicsContext.swapchain_format),
+    //     @backingInt(wgpu.TextureFormat.undef),
+    // );
+    //
+    // zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
+    // zgui.getStyle().scaleAllSizes(1);
+    //
+    // _ = ecs.registerEcs(GuiModule);
 }
 
 pub fn deinit(_: *Ecs) void {

@@ -5,36 +5,40 @@
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .zglfw = .{
-            .url = "git+https://github.com/zig-gamedev/zglfw#0dd29d8073487c9fe1e45e6b729b3aac271d5a71",
-            .hash = "zglfw-0.10.0-dev-zgVDNIG4IQBWN_sfMD-xfC9bJS2hbBN2W7jNlDLovcdC",
+            .url = "git+https://github.com/zig-gamedev/zglfw#2450fe3c4140091287c79cb41e4a8020af73d896",
+            .hash = "zglfw-0.10.0-dev-zgVDNHC7IQAbvGj5whD2Cp5TMmo5G2C9gNYaF-y-EDZ3",
+        },
+        .zsdl = .{
+            .url = "git+https://github.com/zig-gamedev/zsdl#a15e01c8473992f17182ef84935885207c29b32e",
+            .hash = "zsdl-0.4.0-dev-rFpjEzXsXwCYJIHOuBQttpdHyfHwMLtiKBgBGsrUR2O0",
         },
         .zgpu = .{
-            .url = "git+https://github.com/zig-gamedev/zgpu#c512b60c1f0cd438dcc6297083d0e3d91ad5e717",
-            .hash = "zgpu-0.12.0-dev-nqFT5OOmCABcwCeEje63Wohd7SqQ73CbPqZzmuqArpgF",
+            .url = "git+https://github.com/zig-gamedev/zgpu#c944c734f8e352056cf8c1f69d2090c96ca659a2",
+            .hash = "zgpu-0.12.0-dev-nqFT5M-oCACfTMBjC5-__rRDBhjGKT0_Pupb-MP8CNPq",
         },
         .zmath = .{
-            .url = "git+https://github.com/zig-gamedev/zmath#3a5955b2b72cd081563fbb084eff05bffd1e3fbb",
-            .hash = "zmath-0.11.0-dev-wjwivdMsAwD-xaLj76YHUq3t9JDH-X16xuMTmnDzqbu2",
+            .url = "git+https://github.com/zig-gamedev/zmath#43250209495cfb8a1a8d56c2977c563139c6eafe",
+            .hash = "zmath-0.11.0-dev-wjwivaAtAwA7W0_rRXAqdwjWGigw6_pxgsYtAdjUbqUj",
         },
         .zgui = .{
-            .url = "git+https://github.com/zig-gamedev/zgui#d6c4f53c2fbd54673790dc2a5208160a3586ef29",
-            .hash = "zgui-0.6.0-dev--L6sZCJKbgBZGCzVMcwD0bNGmpK6yO-UoIESHX5JiRet",
+            .url = "git+https://github.com/maxpoletaev/zgui#f2b340e25b05503bbdb0e5c9a734882cc4717b40",
+            .hash = "zgui-0.6.0-dev--L6sZG1IbgAJvNv8f_uWy0fwpH53MiG4CB-k2XHIN5PN",
         },
         .zflecs = .{
-            .url = "git+https://github.com/zig-gamedev/zflecs#631b46c4a284ad093c6963c45737d1568edddf71",
-            .hash = "zflecs-0.2.0-dev-1PN3yg0OQQD8uFm8oLV-Bt-7rJGD8oTCso_X4i3dMmFm",
+            .url = "git+https://github.com/zig-gamedev/zflecs#d753086b63d9e6bffa717281e8e20545d97c8fc9",
+            .hash = "zflecs-0.2.0-dev-1PN3ylsRQQCt-UP1m3L4u7so5UNbnaCCgz4OGyudqe_u",
         },
         .zpool = .{
-            .url = "git+https://github.com/zig-gamedev/zpool#2ebe5b065d19989a0c5b4f06227c524c8404c516",
-            .hash = "zpool-0.11.0-dev-bG692YNDAQAyX1pDZKrJrDmorwVqVNTZbbH-zpoDQO-N",
+            .url = "git+https://github.com/zig-gamedev/zpool#f99ee2483b893978492881887a9a256bead24335",
+            .hash = "zpool-0.11.0-dev-bG692RZEAQCXkpITAcuuGU-PUSJppm-C-Lcjo-p2BON6",
         },
         .zmesh = .{
-            .url = "git+https://github.com/zig-gamedev/zmesh#a9c23ba7440b8c03cbc2bec89a3285fe84cbb50f",
-            .hash = "zmesh-0.11.0-dev-oO3A5lKRCgCGK8Krro4Rj_F_MhO8LT487re5u_DNIzvl",
+            .url = "git+https://github.com/zig-gamedev/zmesh#11d6e048f42cd3ee5d08d30d143f8eeab0ae6886",
+            .hash = "zmesh-0.11.0-dev-oO3A5u4-EAB3hsnSTrpDC4M4DknrBb6HUmbUNpERxWBt",
         },
         .zstbi = .{
-            .url = "git+https://github.com/zig-gamedev/zstbi#664305dd52640be15cbebd7cd73d1199679933e1",
-            .hash = "zstbi-0.11.0-dev-L0Ea_2yVBwA4uh-tHfgdhZcQaWRoZVYlNGs4Dl_WTeuR",
+            .url = "git+https://github.com/zig-gamedev/zstbi#6b9bea1fd13eb7c8299f23605b4c6b04fccd9aa7",
+            .hash = "zstbi-0.11.0-dev-L0Ea_wGXBwCvXIzUWRNZe-6FpofI_nz4uAOQ4O0Fuxko",
         },
         .dawn_x86_64_linux_gnu = .{
             .url = "https://github.com/michal-z/webgpu_dawn-x86_64-linux-gnu/archive/7d70db023bf254546024629cbec5ee6113e12a42.tar.gz",

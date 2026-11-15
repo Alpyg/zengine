@@ -9,7 +9,7 @@ zig build run
 ## demo (demo)
 
 ```sh
-zig build ${demo}-run --release=fast
+zig build ${demo}-run
 ```
 
 ## test

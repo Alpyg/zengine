@@ -12,34 +12,37 @@ pub const VertexBuffers = struct {
 };
 
 pub fn Mesh(comptime attribute_formats: anytype) type {
-    const attribute_fields = comptime @typeInfo(@TypeOf(attribute_formats)).@"struct".fields;
+    const attrs = comptime @typeInfo(@TypeOf(attribute_formats)).@"struct";
+    const attrs_len = attrs.field_names.len;
 
-    var mesh_attributes: [attribute_fields.len]std.builtin.Type.StructField = undefined;
-    inline for (attribute_fields, 0..) |field, i| {
-        mesh_attributes[i] = std.builtin.Type.StructField{
-            .name = field.name,
-            .type = vertexFormatToType(field.defaultValue().?),
-            .default_value_ptr = null,
-            .is_comptime = false,
-            .alignment = field.alignment,
-        };
-    }
+    const mesh_attrs_types: [attrs_len]type = blk: {
+        var tmp: [attrs_len]type = undefined;
+        inline for (attrs.field_types, attrs.field_attrs, 0..) |field_type, field_attr, i| {
+            tmp[i] = vertexFormatToType(field_attr.defaultValue(field_type).?);
+        }
+        break :blk tmp;
+    };
 
-    const AttributeData = @Type(.{
-        .@"struct" = std.builtin.Type.Struct{
-            .layout = .auto,
-            .fields = &mesh_attributes,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    const mesh_field_attrs: [attrs_len]std.builtin.Type.Struct.FieldAttributes = blk: {
+        var tmp: [attrs_len]std.builtin.Type.Struct.FieldAttributes = undefined;
+        for (&tmp) |*a| a.* = .{}; // or: @memset(&tmp, .{});
+        break :blk tmp;
+    };
+
+    const AttributeData = @Struct(
+        .auto,
+        null,
+        attrs.field_names,
+        &mesh_attrs_types,
+        &mesh_field_attrs,
+    );
 
     return struct {
         pub const COMPONENT = {};
         const Self = @This();
         pub const Attributes = AttributeData;
 
-        vertex_attributes: [attribute_fields.len]wgpu.VertexAttribute = undefined,
+        vertex_attributes: [attrs_len]wgpu.VertexAttribute = undefined,
         vertex_buffer_layout: ?wgpu.VertexBufferLayout = undefined,
 
         vertex_buffer: zgpu.BufferHandle = undefined,
@@ -48,28 +51,28 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
         vertex_count: u32 = 0,
         index_count: u32 = 0,
 
-        pub fn init(attributes: Attributes, indices: []u32) Self {
+        pub fn init(allocator: std.mem.Allocator, attributes: Attributes, indices: []u32) Self {
             var self = Self{};
-            self.initBuffers(attributes, indices);
+            self.initBuffers(allocator, attributes, indices);
             return self;
         }
 
-        fn initBuffers(self: *Self, attributes: Attributes, indices: []u32) void {
+        fn initBuffers(self: *Self, allocator: std.mem.Allocator, attributes: Attributes, indices: []u32) void {
             const gctx = z.gctx;
 
             const vertex_size = sum: {
                 var sum: u32 = 0;
-                const fields = comptime @typeInfo(Attributes).@"struct".fields;
-                inline for (fields) |field| {
-                    sum += vertexFormatTypeSize(field.type);
+                const field_types = comptime @typeInfo(Attributes).@"struct".field_types;
+                inline for (field_types) |field_type| {
+                    sum += vertexFormatTypeSize(field_type);
                 }
                 break :sum sum;
             };
 
             const vertex_count = blk: {
-                const fields = @typeInfo(Attributes).@"struct".fields;
-                if (fields.len == 0) break :blk 0;
-                const field = @field(attributes, fields[0].name);
+                const field_names = @typeInfo(Attributes).@"struct".field_names;
+                if (field_names.len == 0) break :blk 0;
+                const field = @field(attributes, field_names[0]);
                 break :blk field.len;
             };
 
@@ -84,11 +87,11 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
             });
 
             var offset: u32 = 0;
-            var vertex_data = z.allocator.alloc(u8, vertex_size * vertex_count) catch unreachable;
-            defer z.allocator.free(vertex_data);
+            var vertex_data = allocator.alloc(u8, vertex_size * vertex_count) catch unreachable;
+            defer allocator.free(vertex_data);
 
-            inline for (attribute_fields) |field| {
-                const field_value = @field(attributes, field.name);
+            inline for (attrs.field_names) |field_name| {
+                const field_value = @field(attributes, field_name);
                 if (field_value.len > 0) {
                     for (field_value, 0..) |value, i| {
                         const dst = vertex_data[i * vertex_size + offset .. i * vertex_size + offset + @sizeOf(@TypeOf(field_value[0]))];
@@ -125,7 +128,7 @@ pub fn Mesh(comptime attribute_formats: anytype) type {
     };
 }
 
-fn vertexFormatToType(format: wgpu.VertexFormat) type {
+pub fn vertexFormatToType(format: wgpu.VertexFormat) type {
     return switch (format) {
         .uint8x2 => [][2]u8,
         .uint8x4 => [][4]u8,
@@ -173,7 +176,7 @@ fn vertexFormatToType(format: wgpu.VertexFormat) type {
     };
 }
 
-fn vertexFormatTypeSize(format: anytype) u32 {
+pub fn vertexFormatTypeSize(format: anytype) u32 {
     switch (@typeInfo(format)) {
         .pointer => |ptr_info| {
             if (ptr_info.size == .slice) {

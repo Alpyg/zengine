@@ -69,7 +69,7 @@ pub const RenderPipeline = struct {
         defer z.gctx.releaseResource(self.pipeline);
     }
 
-    pub fn createVertexBufferLayout(comptime v: []wgpu.VertexFormat, attributes: [*]wgpu.VertexAttribute) wgpu.VertexBufferLayout {
+    pub fn createVertexBufferLayout(v: []wgpu.VertexFormat, attributes: [*]wgpu.VertexAttribute) wgpu.VertexBufferLayout {
         var offset: u32 = 0;
         for (v, 0..) |format, i| {
             attributes[i] = wgpu.VertexAttribute{
@@ -80,6 +80,7 @@ pub const RenderPipeline = struct {
 
             offset += vertexFormatSize(format);
         }
+
         return wgpu.VertexBufferLayout{
             .array_stride = offset,
             .attribute_count = v.len,
@@ -89,49 +90,5 @@ pub const RenderPipeline = struct {
 };
 
 inline fn vertexFormatSize(format: wgpu.VertexFormat) u32 {
-    return switch (format) {
-        .uint8x2 => @sizeOf([2]u8),
-        .uint8x4 => @sizeOf([4]u8),
-
-        .sint8x2 => @sizeOf([2]i8),
-        .sint8x4 => @sizeOf([4]i8),
-
-        .unorm8x2 => @sizeOf([2]u8),
-        .unorm8x4 => @sizeOf([4]u8),
-
-        .snorm8x2 => @sizeOf([2]i8),
-        .snorm8x4 => @sizeOf([4]i8),
-
-        .uint16x2 => @sizeOf([2]u16),
-        .uint16x4 => @sizeOf([4]u16),
-
-        .sint16x2 => @sizeOf([2]i16),
-        .sint16x4 => @sizeOf([4]i16),
-
-        .unorm16x2 => @sizeOf([2]u16),
-        .unorm16x4 => @sizeOf([4]u16),
-
-        .snorm16x2 => @sizeOf([2]i16),
-        .snorm16x4 => @sizeOf([4]i16),
-
-        .float16x2 => @sizeOf([2]f16),
-        .float16x4 => @sizeOf([4]f16),
-
-        .float32 => @sizeOf(f32),
-        .float32x2 => @sizeOf([2]f32),
-        .float32x3 => @sizeOf([3]f32),
-        .float32x4 => @sizeOf([4]f32),
-
-        .uint32 => @sizeOf(u32),
-        .uint32x2 => @sizeOf([2]u32),
-        .uint32x3 => @sizeOf([3]u32),
-        .uint32x4 => @sizeOf([4]u32),
-
-        .sint32 => @sizeOf(i32),
-        .sint32x2 => @sizeOf([2]i32),
-        .sint32x3 => @sizeOf([3]i32),
-        .sint32x4 => @sizeOf([4]i32),
-
-        else => unreachable,
-    };
+    return @sizeOf(mesh.vertexFormatToType(format));
 }

@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const wgpu = @import("zgpu").wgpu;
-const zglfw = @import("zglfw");
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 const zm = @import("zmath");
@@ -38,8 +37,8 @@ pub const UpdateTime = z.System(struct {
         const gfx = r_gfx.get();
         const time = r_time.getMut();
 
-        inline for (@typeInfo(Time).@"struct".fields) |field| {
-            @field(time, field.name) = @field(gfx.gctx.stats, field.name);
+        inline for (@typeInfo(Time).@"struct".field_names) |field_name| {
+            @field(time, field_name) = @field(gfx.gctx.stats, field_name);
         }
     }
 });

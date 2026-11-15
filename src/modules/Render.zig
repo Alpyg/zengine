@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const wgpu = @import("zgpu").wgpu;
-const zglfw = @import("zglfw");
 const zgpu = @import("zgpu");
 const zgui = @import("zgui");
 const zm = @import("zmath");

@@ -19,12 +19,12 @@ pub fn Event(comptime T: type) type {
         writer: WriterImpl = undefined,
         reader: ReaderImpl = undefined,
 
-        pub fn init(_: *Ecs) Self {
-            const queue = z.allocator.create(Queue) catch @panic("OOM");
+        pub fn init(ecs: *Ecs) Self {
+            const queue = ecs.allocator.create(Queue) catch @panic("OOM");
             queue.* = .{};
 
             return Self{
-                .writer = .{ .queue = queue, .arena = std.heap.ArenaAllocator.init(z.allocator) },
+                .writer = .{ .queue = queue, .arena = std.heap.ArenaAllocator.init(ecs.allocator) },
                 .reader = .{ .queue = queue },
             };
         }

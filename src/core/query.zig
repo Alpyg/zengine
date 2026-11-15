@@ -10,13 +10,13 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     const components_info = @typeInfo(@TypeOf(Components)).@"struct";
     const filters_info = @typeInfo(@TypeOf(Filters)).@"struct";
 
-    if (components_info.fields.len == 0) {
+    if (components_info.field_names.len == 0) {
         @compileError("Expected at least one component in query");
     }
 
-    comptime var ComponentTypes: [components_info.fields.len]type = undefined;
-    inline for (components_info.fields, 0..) |component, i| {
-        const T = @field(Components, component.name);
+    comptime var ComponentTypes: [components_info.field_names.len]type = undefined;
+    inline for (components_info.field_names, 0..) |component_name, i| {
+        const T = @field(Components, component_name);
 
         ComponentTypes[i] = parseQueryType(T);
     }
@@ -29,17 +29,17 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
         query: *zflecs.query_t = undefined,
 
         pub fn init(world: *zflecs.world_t) Self {
-            var terms: [32]zflecs.term_t = [_]zflecs.term_t{.{}} ** zflecs.FLECS_TERM_COUNT_MAX;
+            var terms: [32]zflecs.term_t = @splat(.{});
             var count: usize = 0;
 
-            inline for (components_info.fields) |component| {
-                const T = @field(Components, component.name);
+            inline for (components_info.field_names) |component_name| {
+                const T = @field(Components, component_name);
                 terms[count] = parseQueryTypeTerm(T);
                 count += 1;
             }
 
-            inline for (filters_info.fields) |filter| {
-                const T = @field(Filters, filter.name);
+            inline for (filters_info.field_names) |filter_name| {
+                const T = @field(Filters, filter_name);
                 assertImplsTerm(T);
 
                 terms[count] = T.term();
@@ -92,43 +92,52 @@ fn parseQueryTypeTerm(comptime T: type) zflecs.term_t {
     return term;
 }
 
-fn parseQueryType(comptime T: type) type {
-    const info = @typeInfo(T);
+fn parseQueryType(comptime C: type) type {
+    const info = @typeInfo(C);
 
     const optional = info == .optional;
-    var C = if (optional) @typeInfo(T).optional.child else T;
+    var c = if (optional) @typeInfo(C).optional.child else C;
 
-    C = if (@hasDecl(C, "Component")) C.Component else C;
+    c = if (@hasDecl(c, "Inner")) c.Inner else c;
 
     if (optional) {
-        return ?C;
+        return ?c;
     } else {
-        return C;
+        return c;
     }
 }
 
-pub fn With(comptime Component: type) type {
+pub fn With(comptime C: type) type {
     return struct {
-        pub fn term() zflecs.term_t {
-            return zflecs.term_t{ .id = zflecs.id(Component), .inout = .In };
-        }
-    };
-}
-
-pub fn Without(comptime Component: type) type {
-    return struct {
-        pub fn term() zflecs.term_t {
-            return zflecs.term_t{ .id = zflecs.id(Component), .inout = .InOutNone, .oper = .Not };
-        }
-    };
-}
-
-pub fn Parent(comptime T: type) type {
-    return struct {
-        const Component = T;
+        pub const Inner = C;
         pub fn term() zflecs.term_t {
             return zflecs.term_t{
-                .id = zflecs.id(T),
+                .id = zflecs.id(Inner),
+                .inout = .In,
+            };
+        }
+    };
+}
+
+pub fn Without(comptime C: type) type {
+    return struct {
+        pub const Inner = C;
+        pub fn term() zflecs.term_t {
+            return zflecs.term_t{
+                .id = zflecs.id(C),
+                .inout = .InOutNone,
+                .oper = .Not,
+            };
+        }
+    };
+}
+
+pub fn Parent(comptime C: type) type {
+    return struct {
+        pub const Inner = C;
+        pub fn term() zflecs.term_t {
+            return zflecs.term_t{
+                .id = zflecs.id(C),
                 .inout = .In,
                 .src = .{ .id = zflecs.Cascade },
                 .trav = zflecs.ChildOf,
@@ -157,9 +166,9 @@ fn QueryIter(comptime QueryTypes: anytype) type {
             else => @compileError("Expected struct, pointer or optional component"),
         }
     }
-    const ComponentsTable = std.meta.Tuple(&TableTypes);
+    const ComponentsTable = @Tuple(&TableTypes);
     const Components = if (QueryTypes.len > 1)
-        std.meta.Tuple(&ComponentTypes)
+        @Tuple(&ComponentTypes)
     else
         *@typeInfo(TableTypes[0]).pointer.child;
 

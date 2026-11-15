@@ -21,13 +21,16 @@ pub fn init(_: DebugModule, ecs: *Ecs) void {
 pub const DebugRender = System(struct {
     pub const phase = &z.Pipeline.First;
 
-    pub fn run(res_gfx: Resource(Gfx), res_input: Resource(Input)) void {
+    pub fn run(
+        res_gfx: Resource(Gfx),
+        // res_input: Resource(Input),
+    ) void {
         const gfx = res_gfx.get();
-        const input = res_input.getMut();
+        // const input = res_input.getMut();
 
-        if (input.getKey(.escape).just_pressed) {
-            input.toggleCursor();
-        }
+        // if (input.getKey(.escape).just_pressed) {
+        //     input.toggleCursor();
+        // }
 
         zgui.pushStyleVar1f(.{ .idx = zgui.StyleVar.window_rounding, .v = 0 });
         zgui.pushStyleVar2f(.{ .idx = zgui.StyleVar.window_padding, .v = .{ 0, 0 } });
@@ -80,7 +83,7 @@ pub const DebugUIViewportSystem = z.System(struct {
                 const avail = zgui.getContentRegionAvail();
 
                 const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
-                const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @enumFromInt(@intFromPtr(tex_id)) };
+                const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @fromBackingInt(@intCast(@intFromPtr(tex_id))) };
                 zgui.image(tex_ref, .{ .w = avail[0], .h = avail[1] });
             }
             zgui.end();

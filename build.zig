@@ -8,11 +8,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     };
 
-    const zglfw_dep = b.dependency("zglfw", .{});
+    // const zglfw_dep = b.dependency("zglfw", .{});
+    const zsdl_dep = b.dependency("zsdl", .{});
     const zgpu_dep = b.dependency("zgpu", .{});
     const zflecs_dep = b.dependency("zflecs", .{});
     const zgui_dep = b.dependency("zgui", .{
-        .backend = .glfw_wgpu,
+        .backend = .sdl3_gpu,
         .shared = false,
         .with_implot = true,
         .with_node_editor = true,
@@ -28,7 +29,8 @@ pub fn build(b: *std.Build) void {
         .optimize = options.optimize,
         .strip = false,
         .imports = &.{
-            .{ .name = "zglfw", .module = zglfw_dep.module("root") },
+            // .{ .name = "zglfw", .module = zglfw_dep.module("root") },
+            .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") },
             .{ .name = "zgpu", .module = zgpu_dep.module("root") },
             .{ .name = "zflecs", .module = zflecs_dep.module("root") },
             .{ .name = "zgui", .module = zgui_dep.module("root") },
@@ -38,8 +40,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zstbi", .module = zstbi_dep.module("root") },
         },
     });
-
-    mod.linkLibrary(zglfw_dep.artifact("glfw"));
+    // mod.linkLibrary(zglfw_dep.artifact("glfw"));
+    mod.linkSystemLibrary("sdl3", .{});
     mod.linkLibrary(zgpu_dep.artifact("zdawn"));
     mod.linkLibrary(zflecs_dep.artifact("flecs"));
     mod.linkLibrary(zgui_dep.artifact("imgui"));
@@ -61,17 +63,13 @@ pub const Examples = struct {
 };
 
 pub fn buildExamples(b: *std.Build, options: anytype, mod: anytype) void {
-    inline for (comptime std.meta.declarations(Examples)) |d| {
-        _ = buildExe(
-            b,
-            options,
-            @field(Examples, d.name),
-            mod,
-        );
+    const examples = @typeInfo(Examples).@"struct".decl_names;
+    inline for (examples) |example| {
+        _ = buildExe(b, @field(Examples, example), options, mod);
     }
 }
 
-fn buildExe(b: *std.Build, options: anytype, example: anytype, mod: anytype) *std.Build.Step.Compile {
+fn buildExe(b: *std.Build, example: anytype, options: anytype, mod: anytype) *std.Build.Step.Compile {
     const exe = example.build(b, options, mod);
 
     const install_exe = b.addInstallArtifact(exe, .{});

@@ -32,8 +32,8 @@ pub const Input = struct {
 
     pub fn init(ecs: *Ecs) Input {
         return Input{
-            .key_states = std.AutoHashMap(Key, InputState).init(z.allocator),
-            .mouse_states = std.AutoHashMap(Mouse, InputState).init(z.allocator),
+            .key_states = std.AutoHashMap(Key, InputState).init(ecs.allocator),
+            .mouse_states = std.AutoHashMap(Mouse, InputState).init(ecs.allocator),
             .cursor_position = .{ 0, 0 },
             .mouse_delta = .{ 0, 0 },
             .gfx = zflecs.singleton_get(ecs.world, Gfx).?,
@@ -93,7 +93,7 @@ pub const LoadInput = System(struct {
         var input = res_input.getMut();
 
         inline for (@typeInfo(Key).@"enum".fields) |key_field| {
-            const key = @as(Key, @enumFromInt(key_field.value));
+            const key = @as(Key, @fromBackingInt(@intCast(key_field.value)));
             const is_down = zglfw.getKey(gfx.window, key) == .press;
 
             const gop = input.key_states.getOrPut(key) catch return;
@@ -107,7 +107,7 @@ pub const LoadInput = System(struct {
         }
 
         inline for (@typeInfo(Mouse).@"enum".fields) |button_field| {
-            const button = @as(Mouse, @enumFromInt(button_field.value));
+            const button = @as(Mouse, @fromBackingInt(@intCast(button_field.value)));
             const is_down = zglfw.getMouseButton(gfx.window, button) == .press;
 
             const gop = input.mouse_states.getOrPut(button) catch return;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zflecs = @import("zflecs");
 
@@ -15,20 +16,21 @@ pub const Without = @import("query.zig").Without;
 
 const Ecs = @This();
 
+allocator: std.mem.Allocator = undefined,
 world: *zflecs.world_t = undefined,
 
-pub fn init() Ecs {
-    var self = Ecs{ .world = zflecs.init() };
+pub fn init(allocator: std.mem.Allocator) *Ecs {
+    const self = allocator.create(Ecs) catch @panic("oom");
+    self.* = .{ .allocator = allocator, .world = zflecs.init() };
 
-    Pipeline.init(&self);
-
-    z.zstbi.init(z.allocator);
-
+    Pipeline.init(self);
+    z.zstbi.init(allocator) catch @panic("shouldn't fail");
     return self;
 }
 
 pub fn deinit(self: *Ecs) void {
     _ = zflecs.fini(self.world);
+    self.allocator.destroy(self);
 }
 
 pub fn progress(self: *Ecs) void {
@@ -54,8 +56,8 @@ pub fn add(self: *Ecs, entity: zflecs.entity_t, components: anytype) *Ecs {
     if (components_info == .type) {
         self.add(entity, components);
     } else if (components_info.@"struct".is_tuple) {
-        inline for (components_info.@"struct".fields) |field| {
-            const component = @field(components, field.name);
+        inline for (components_info.@"struct".field_names) |field_name| {
+            const component = @field(components, field_name);
             self.addComponent(entity, component);
         }
     }
@@ -65,7 +67,7 @@ pub fn add(self: *Ecs, entity: zflecs.entity_t, components: anytype) *Ecs {
 
 fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
     if (@sizeOf(@TypeOf(component)) == 0) {
-        zflecs.add(self.world, entity, component);
+        zflecs.add(self.world, entity, @TypeOf(component));
     } else {
         _ = zflecs.set(self.world, entity, @TypeOf(component), component);
     }
@@ -95,12 +97,15 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
         _ = zflecs.singleton_set(self.world, T, resource);
 
         std.log.debug("Registered resource `{s}`", .{@typeName(T)});
+    } else if (@hasDecl(T, "EVENT")) {
+        _ = self.registerEvent(z.Event(T));
+        std.log.debug("Registered event `{s}`", .{@typeName(T)});
     } else {
         if (@typeInfo(T) != .@"struct") return self;
 
-        const decls = @typeInfo(T).@"struct".decls;
-        inline for (decls) |decl| {
-            const Child = @field(T, decl.name);
+        const decl_names = @typeInfo(T).@"struct".decl_names;
+        inline for (decl_names) |decl_name| {
+            const Child = @field(T, decl_name);
             if (@TypeOf(Child) != type) continue;
 
             _ = self.registerEcs(Child);
@@ -128,8 +133,6 @@ pub fn registerEvent(self: *Ecs, E: type) *Ecs {
 
     std.log.debug("Registered event `{s}`", .{@typeName(E)});
 
-    _ = self.registerSystems(E);
-
     return self;
 }
 
@@ -143,16 +146,16 @@ pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
 }
 
 pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
-    const decls = @typeInfo(T).@"struct".decls;
-    inline for (decls) |decl| {
-        const Child = @field(T, decl.name);
+    const decl_names = @typeInfo(T).@"struct".decl_names;
+    inline for (decl_names) |decl_name| {
+        const Child = @field(T, decl_name);
         if (@TypeOf(Child) == type) {
             if (@sizeOf(Child) > 0) {
                 zflecs.COMPONENT(self.world, Child);
-                std.log.debug("Registered component `{s}`", .{decl.name});
+                std.log.debug("Registered component `{s}`", .{decl_name});
             } else {
                 zflecs.TAG(self.world, Child);
-                std.log.debug("Registered tag `{s}`", .{decl.name});
+                std.log.debug("Registered tag `{s}`", .{decl_name});
             }
         }
     }
@@ -167,9 +170,9 @@ pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
 
         if (@hasDecl(T, "init")) T.init(self.world);
     } else {
-        const decls = @typeInfo(T).@"struct".decls;
-        inline for (decls) |decl| {
-            const Child = @field(T, decl.name);
+        const decl_names = @typeInfo(T).@"struct".decl_names;
+        inline for (decl_names) |decl_name| {
+            const Child = @field(T, decl_name);
             if (@TypeOf(Child) != type) continue;
 
             _ = registerSystems(self, Child);
@@ -197,9 +200,9 @@ fn deinitSystems(comptime T: type) void {
     if (isSystem(T)) {
         if (@hasDecl(T, "deinit")) T.deinit();
     } else {
-        const decls = @typeInfo(T).@"struct".decls;
-        inline for (decls) |decl| {
-            const Child = @field(T, decl.name);
+        const decl_names = @typeInfo(T).@"struct".decl_names;
+        inline for (decl_names) |decl_name| {
+            const Child = @field(T, decl_name);
             if (@TypeOf(Child) != type) continue;
 
             deinitSystems(Child);
@@ -254,7 +257,7 @@ test "ecs system" {
         };
     };
 
-    var ecs = Ecs.init();
+    var ecs = Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
     _ = ecs.registerModule(Module{});
@@ -263,7 +266,7 @@ test "ecs system" {
     _ = ecs.add(entity, Module.Components.Counter{});
 
     const entity_tagged = ecs.new("Test Entity Tagged");
-    _ = ecs.add(entity_tagged, .{ Module.Components.Counter{}, Module.Components.Tag });
+    _ = ecs.add(entity_tagged, .{ Module.Components.Counter{}, Module.Components.Tag{} });
 
     const iterations = 5;
     for (0..iterations) |_| {
@@ -271,12 +274,14 @@ test "ecs system" {
     }
 
     var counter_q = Query(.{Module.Components.Counter}, .{Without(Module.Components.Tag)}).init(ecs.world);
+    defer counter_q.deinit();
     var counter_it = counter_q.iter();
     while (counter_it.next()) |counter| {
         try expect(counter.value == iterations);
     }
 
     var counters_q = Query(.{ Module.Components.Counter, Module.Components.Counter2 }, .{Without(Module.Components.Tag)}).init(ecs.world);
+    defer counters_q.deinit();
     var counters_it = counters_q.iter();
     while (counters_it.next()) |counters| {
         const counter1, const counter2 = counters;
@@ -285,6 +290,7 @@ test "ecs system" {
     }
 
     var tag_q = Query(.{Module.Components.Counter}, .{With(Module.Components.Tag)}).init(ecs.world);
+    defer tag_q.deinit();
     var tag_it = tag_q.iter();
     while (tag_it.next()) |tag| {
         try expect(tag.value == iterations * 2);
