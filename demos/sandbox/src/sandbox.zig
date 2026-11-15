@@ -11,11 +11,11 @@ pub fn main(init: std.process.Init) !void {
     var app = z.Ecs.init(allocator);
     defer app.deinit();
 
-    // _ = app.registerModule(z.GfxModule{})
-    // .registerModule(z.TimeModule{})
-    // .registerModule(z.GuiModule{})
-    // .registerModule(z.InputModule{})
-    _ = app.registerModule(z.TransformModule{})
+    _ = app.registerModule(z.GfxModule{})
+        .registerModule(z.TimeModule{})
+        // .registerModule(z.GuiModule{})
+        .registerModule(z.InputModule{})
+        .registerModule(z.TransformModule{})
         // .registerModule(z.DebugModule{})
         // .registerModule(z.CameraModule{})
         // .registerModule(z.RenderModule{})

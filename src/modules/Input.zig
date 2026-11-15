@@ -1,9 +1,9 @@
 const std = @import("std");
 
 const zflecs = @import("zflecs");
-const zglfw = @import("zglfw");
-pub const Key = zglfw.Key;
-pub const Mouse = zglfw.MouseButton;
+const zsdl = @import("zsdl");
+pub const Key = zsdl.Scancode;
+pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
 
 const z = @import("../root.zig");
 const Ecs = z.Ecs;
@@ -31,6 +31,10 @@ pub const Input = struct {
     gfx: *const Gfx = undefined,
 
     pub fn init(ecs: *Ecs) Input {
+        _ = ecs.registerEvent(z.Event(KeyEvent))
+            .registerEvent(z.Event(MouseButtonEvent))
+            .registerEvent(z.Event(MouseMotionEvent));
+
         return Input{
             .key_states = std.AutoHashMap(Key, InputState).init(ecs.allocator),
             .mouse_states = std.AutoHashMap(Mouse, InputState).init(ecs.allocator),
@@ -69,9 +73,9 @@ pub const Input = struct {
 
     pub fn toggleCursor(self: *Input) void {
         if (self.cursor_disabled) {
-            zglfw.setInputMode(self.gfx.window, .cursor, .normal) catch {};
+            zsdl.hideCursor() catch {};
         } else {
-            zglfw.setInputMode(self.gfx.window, .cursor, .disabled) catch {};
+            zsdl.showCursor() catch {};
         }
         self.cursor_disabled = !self.cursor_disabled;
     }
@@ -83,50 +87,121 @@ pub const InputState = packed struct {
     just_released: bool = false,
 };
 
+pub const KeyEvent = struct {
+    key: zsdl.Scancode,
+    kind: Kind,
+
+    pub const Kind = enum { pressed, released };
+};
+
+pub const MouseButtonEvent = struct {
+    button: Mouse,
+    kind: Kind,
+
+    pub const Kind = enum { pressed, released };
+};
+
+pub const MouseMotionEvent = struct {
+    delta: [2]f32,
+    position: [2]f32,
+};
+
 pub const LoadInput = System(struct {
     pub const phase = &Pipeline.First;
 
-    pub fn run(res_gfx: Resource(Gfx), res_input: Resource(Input)) void {
-        zglfw.pollEvents();
-
-        const gfx = res_gfx.get();
+    pub fn run(
+        res_input: Resource(Input),
+        key_writer: z.Event(KeyEvent).Writer,
+        button_writer: z.Event(MouseButtonEvent).Writer,
+        motion_writer: z.Event(MouseMotionEvent).Writer,
+    ) void {
         var input = res_input.getMut();
 
-        inline for (@typeInfo(Key).@"enum".fields) |key_field| {
-            const key = @as(Key, @fromBackingInt(@intCast(key_field.value)));
-            const is_down = zglfw.getKey(gfx.window, key) == .press;
-
-            const gop = input.key_states.getOrPut(key) catch return;
-            const was_down = if (gop.found_existing) gop.value_ptr.pressed else false;
-
-            gop.value_ptr.* = InputState{
-                .pressed = is_down,
-                .just_pressed = is_down and !was_down,
-                .just_released = !is_down and was_down,
-            };
+        var event: zsdl.Event = undefined;
+        while (zsdl.pollEvent(&event)) {
+            switch (event.type) {
+                else => {},
+            }
         }
 
-        inline for (@typeInfo(Mouse).@"enum".fields) |button_field| {
-            const button = @as(Mouse, @fromBackingInt(@intCast(button_field.value)));
-            const is_down = zglfw.getMouseButton(gfx.window, button) == .press;
+        const kb = zsdl.getKeyboardState();
+        inline for (@typeInfo(Key).@"enum".field_names) |field_name| {
+            const scancode = @field(Key, field_name);
+            const idx = @backingInt(scancode);
+            const is_down = if (idx < kb.len) kb[idx] else false;
+
+            const gop = input.key_states.getOrPut(scancode) catch return;
+            const was = if (gop.found_existing) gop.value_ptr.pressed else false;
+
+            const just_pressed = is_down and !was;
+            const just_released = !is_down and was;
+
+            gop.value_ptr.* = .{
+                .pressed = is_down,
+                .just_pressed = just_pressed,
+                .just_released = just_released,
+            };
+
+            if (just_pressed) {
+                key_writer.send(.{ .key = scancode, .kind = .pressed }) catch {};
+            }
+            if (just_released) {
+                key_writer.send(.{ .key = scancode, .kind = .released }) catch {};
+            }
+        }
+
+        var mx: f32 = 0;
+        var my: f32 = 0;
+        const button_mask: u32 = zsdl.getMouseState(&mx, &my);
+        inline for (@typeInfo(Mouse).@"enum".field_names) |field_name| {
+            const button: Mouse = @field(Mouse, field_name);
+            const bit = @as(u32, 1) << (@backingInt(button) - 1);
+            const is_down = (button_mask & bit) != 0;
 
             const gop = input.mouse_states.getOrPut(button) catch return;
-            const was_down = if (gop.found_existing) gop.value_ptr.pressed else false;
+            const was = if (gop.found_existing) gop.value_ptr.pressed else false;
 
-            gop.value_ptr.* = InputState{
+            const just_pressed = is_down and !was;
+            const just_released = !is_down and was;
+
+            gop.value_ptr.* = .{
                 .pressed = is_down,
-                .just_pressed = is_down and !was_down,
-                .just_released = !is_down and was_down,
+                .just_pressed = just_pressed,
+                .just_released = just_released,
             };
+
+            if (just_pressed) {
+                button_writer.send(.{ .button = button, .kind = .pressed }) catch {};
+            }
+            if (just_released) {
+                button_writer.send(.{ .button = button, .kind = .released }) catch {};
+            }
         }
 
-        var new_mouse = [2]f64{ 0, 0 };
-        zglfw.getCursorPos(gfx.window, &new_mouse[0], &new_mouse[1]);
+        input.mouse_delta[0] = mx - input.cursor_position[0];
+        input.mouse_delta[1] = my - input.cursor_position[1];
+        input.cursor_position[0] = mx;
+        input.cursor_position[1] = my;
 
-        input.mouse_delta[0] = (@as(f32, @floatCast(new_mouse[0])) - input.cursor_position[0]);
-        input.mouse_delta[1] = (@as(f32, @floatCast(new_mouse[1])) - input.cursor_position[1]);
+        if (input.mouse_delta[0] != 0 or input.mouse_delta[1] != 0) {
+            motion_writer.send(.{
+                .delta = input.mouse_delta,
+                .position = input.cursor_position,
+            }) catch {};
+        }
+    }
+});
 
-        input.cursor_position[0] = @as(f32, @floatCast(new_mouse[0]));
-        input.cursor_position[1] = @as(f32, @floatCast(new_mouse[1]));
+pub const InputEventClearSystem = System(struct {
+    pub const phase = &Pipeline.Last;
+
+    pub fn run(
+        key: z.Event(KeyEvent).Writer,
+        button: z.Event(MouseButtonEvent).Writer,
+        motion: z.Event(MouseMotionEvent).Writer,
+    ) void {
+        key.clear();
+        button.clear();
+        motion.clear();
     }
 });

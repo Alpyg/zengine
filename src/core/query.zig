@@ -112,7 +112,7 @@ pub fn With(comptime C: type) type {
         pub const Inner = C;
         pub fn term() zflecs.term_t {
             return zflecs.term_t{
-                .id = zflecs.id(Inner),
+                .id = zflecs.id(C),
                 .inout = .In,
             };
         }

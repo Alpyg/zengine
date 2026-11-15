@@ -24,23 +24,23 @@ pub const Without = Ecs.Without;
 // Modules
 pub const CameraModule = @import("modules/Camera.zig");
 pub const DebugModule = @import("modules/Debug.zig");
-// pub const GfxModule = @import("modules/Gfx.zig");
+pub const GfxModule = @import("modules/Gfx.zig");
 // pub const GuiModule = @import("modules/Gui.zig");
-// pub const InputModule = @import("modules/Input.zig");
+pub const InputModule = @import("modules/Input.zig");
 // pub const RenderModule = @import("modules/Render.zig");
 pub const TimeModule = @import("modules/Time.zig");
 pub const TransformModule = @import("modules/Transform.zig");
 
 // Components and Resources
 pub const Camera = CameraModule.Camera;
-// pub const Gfx = GfxModule.Gfx;
+pub const Gfx = GfxModule.Gfx;
 pub const GlobalTransform = TransformModule.GlobalTransform;
-// pub const Input = InputModule.Input;
+pub const Input = InputModule.Input;
 pub const MainCamera = CameraModule.MainCamera;
 pub const Name = TransformModule.Name;
 // pub const RenderPipeline = RenderModule.RenderPipeline;
 // pub const StandardMaterial = RenderModule.StandardMaterial;
-// pub const Time = TimeModule.Time;
+pub const Time = TimeModule.Time;
 pub const Transform = TransformModule.Transform;
 // pub const TriangleMesh = RenderModule.TriangleMesh;
 
