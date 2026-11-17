@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const zflecs = @import("zflecs");
+const zgui = @import("zgui");
 const zsdl = @import("zsdl");
 pub const Key = zsdl.Scancode;
 pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
@@ -113,6 +114,7 @@ pub const LoadInput = z.System(&z.Phase.First, struct {
 
         var event: zsdl.Event = undefined;
         while (zsdl.pollEvent(&event)) {
+            _ = zgui.backend.processEvent(@ptrCast(&event));
             switch (event.type) {
                 .quit => ecs.quit(),
                 else => {},
