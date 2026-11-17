@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 
 const zflecs = @import("zflecs");
 
@@ -7,7 +6,7 @@ const z = @import("../root.zig");
 pub const Assets = @import("assets.zig").Assets;
 pub const Event = @import("event.zig").Event;
 pub const Parent = @import("query.zig").Parent;
-pub const Pipeline = @import("Pipeline.zig");
+pub const Phase = @import("phase.zig");
 pub const Query = @import("query.zig").Query;
 pub const Resource = @import("resource.zig").Resource;
 pub const System = @import("system.zig").System;
@@ -23,7 +22,7 @@ pub fn init(allocator: std.mem.Allocator) *Ecs {
     const self = allocator.create(Ecs) catch @panic("oom");
     self.* = .{ .allocator = allocator, .world = zflecs.init() };
 
-    Pipeline.init(self);
+    Phase.init(self);
     z.zstbi.init(allocator) catch @panic("shouldn't fail");
     return self;
 }
@@ -54,7 +53,7 @@ pub fn add(self: *Ecs, entity: zflecs.entity_t, components: anytype) *Ecs {
     }
 
     if (components_info == .type) {
-        self.add(entity, components);
+        self.addComponent(entity, components{});
     } else if (components_info.@"struct".is_tuple) {
         inline for (components_info.@"struct".field_names) |field_name| {
             const component = @field(components, field_name);
@@ -78,8 +77,11 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
         _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
-        if (@hasDecl(T, "init")) T.init(self.world);
-    } else if (@hasDecl(T, "COMPONENT")) {
+        if (@hasDecl(T, "init")) T.init(self);
+        return self;
+    }
+
+    if (@hasDecl(T, "COMPONENT")) {
         if (@sizeOf(T) > 0) {
             zflecs.COMPONENT(self.world, T);
             std.log.debug("Registered component `{s}`", .{@typeName(T)});
@@ -87,29 +89,47 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
             zflecs.TAG(self.world, T);
             std.log.debug("Registered tag `{s}`", .{@typeName(T)});
         }
-    } else if (@hasDecl(T, "RESOURCE")) {
+        return self;
+    }
+
+    if (@hasDecl(T, "RESOURCE")) {
+        zflecs.COMPONENT(self.world, T);
+        if (zflecs.singleton_get(self.world, T) != null) return self;
+
         const resource = if (@hasDecl(T, "init"))
             T.init(self)
         else
             T{};
 
-        zflecs.COMPONENT(self.world, T);
         _ = zflecs.singleton_set(self.world, T, resource);
 
         std.log.debug("Registered resource `{s}`", .{@typeName(T)});
-    } else if (@hasDecl(T, "EVENT")) {
+        return self;
+    }
+
+    if (@hasDecl(T, "EVENT")) {
         _ = self.registerEvent(z.Event(T));
         std.log.debug("Registered event `{s}`", .{@typeName(T)});
-    } else {
-        if (@typeInfo(T) != .@"struct") return self;
+        return self;
+    }
 
-        const decl_names = @typeInfo(T).@"struct".decl_names;
-        inline for (decl_names) |decl_name| {
-            const Child = @field(T, decl_name);
-            if (@TypeOf(Child) != type) continue;
+    if (@typeInfo(T) != .@"struct") return self;
 
-            _ = self.registerEcs(Child);
-        }
+    const decl_names = @typeInfo(T).@"struct".decl_names;
+
+    // First pass: components, resources and events. This guarantees that all
+    // resources exist before any system's argument tuple is initialized.
+    inline for (decl_names) |decl_name| {
+        const Child = @field(T, decl_name);
+        if (@TypeOf(Child) != type) continue;
+        if (!isSystem(Child)) _ = self.registerEcs(Child);
+    }
+
+    // Second pass: systems, in declaration order.
+    inline for (decl_names) |decl_name| {
+        const Child = @field(T, decl_name);
+        if (@TypeOf(Child) != type) continue;
+        if (isSystem(Child)) _ = self.registerEcs(Child);
     }
 
     return self;
@@ -139,10 +159,34 @@ pub fn registerEvent(self: *Ecs, E: type) *Ecs {
 pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
     const ResourceType = @TypeOf(resource);
 
+    // A "type" passed as a value means the caller forgot to call `.init(ecs)`
+    // (or should have used `registerEcs`, which handles `RESOURCE` types).
+    if (ResourceType == type) {
+        @compileError(
+            "registerResource called with a type '" ++ @typeName(resource) ++ "'. " ++
+                "Use registerEcs(" ++ @typeName(resource) ++ ") instead (it will call init(ecs)), " ++
+                "or pass an instance: registerResource(try " ++ @typeName(resource) ++ ".init(ecs)).",
+        );
+    }
+
+    if (@sizeOf(ResourceType) == 0) {
+        @compileError(
+            "registerResource called with a zero-sized type '" ++ @typeName(ResourceType) ++
+                "'. Use registerEcs (it will register a TAG) or pass a non-empty struct.",
+        );
+    }
+
+    if (zflecs.id(ResourceType) != 0 and zflecs.singleton_get(self.world, ResourceType) != null)
+        return self;
+
     zflecs.COMPONENT(self.world, ResourceType);
     _ = zflecs.singleton_set(self.world, ResourceType, resource);
 
     return self;
+}
+
+pub fn hasResource(self: *Ecs, comptime T: type) bool {
+    return zflecs.id(T) != 0 and zflecs.singleton_get(self.world, T) != null;
 }
 
 pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
@@ -165,10 +209,10 @@ pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
 
 pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.phase.*, T.run);
+        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
-        if (@hasDecl(T, "init")) T.init(self.world);
+        if (@hasDecl(T, "init")) T.init(self);
     } else {
         const decl_names = @typeInfo(T).@"struct".decl_names;
         inline for (decl_names) |decl_name| {
@@ -182,7 +226,7 @@ pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     return self;
 }
 
-pub fn registerPipeline(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
+pub fn registerPhase(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
     phase.* = zflecs.new_w_id(self.world, zflecs.Phase);
 
     if (depends_on) |depended_on| {
@@ -228,9 +272,7 @@ test "ecs system" {
         };
 
         const Systems = struct {
-            pub const TestSystem = System(struct {
-                pub const phase = &Pipeline.Update;
-
+            pub const TestSystem = System(&Phase.Update, struct {
                 pub fn run(
                     q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
                     q_counters: Query(.{ Components.Counter, Components.Counter2 }, .{Without(Components.Tag)}),

@@ -97,7 +97,7 @@ pub fn Event(comptime T: type) type {
         };
 
         pub const EventClearSystem = z.System(struct {
-            pub const phase = &z.Pipeline.Last;
+            pub const phase = &z.Phase.Last;
 
             pub fn run(event: z.Event(T).Writer) void {
                 event.clear();

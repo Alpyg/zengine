@@ -1,21 +1,12 @@
 const std = @import("std");
 
-const wgui = @import("zgpu").wgpu;
-const zflecs = @import("zflecs");
-const zgui = @import("zgui");
 const zm = @import("zmath");
 
 const z = @import("../root.zig");
-const Ecs = z.Ecs;
-const Parent = z.Parent;
-const Pipeline = z.Pipeline;
-const Query = z.Query;
-const Resource = z.Resource;
-const System = z.System;
 
 const TransformModule = @This();
 
-pub fn init(_: TransformModule, ecs: *Ecs) void {
+pub fn init(_: TransformModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(TransformModule);
 }
 
@@ -117,8 +108,8 @@ pub const Name = struct {
     value: []const u8,
 };
 
-pub const PropagateParentTransform = System(&Pipeline.PostUpdate, struct {
-    pub fn run(q: Query(.{ z.Transform, z.GlobalTransform, ?Parent(z.GlobalTransform) }, .{})) void {
+pub const PropagateParentTransform = z.System(&z.Phase.PostUpdate, struct {
+    pub fn run(q: z.Query(.{ z.Transform, z.GlobalTransform, ?z.Parent(z.GlobalTransform) }, .{})) void {
         var it = q.iter();
         var i: usize = 0;
         while (it.next()) |transforms| : (i += 1) {

@@ -8,6 +8,12 @@ const z = @import("../root.zig");
 
 const GuiModule = @This();
 
+var frame_started: bool = false;
+
+pub fn isFrameStarted() bool {
+    return frame_started;
+}
+
 pub fn init(_: GuiModule, ecs: *z.Ecs) void {
     zgui.init(ecs.allocator);
 
@@ -35,21 +41,28 @@ pub fn deinit(_: *z.Ecs) void {
     zgui.deinit();
 }
 
-pub const PreRender = z.System(&z.Pipeline.First, struct {
+pub const PreRender = z.System(&z.Phase.PreRender, struct {
     pub fn run(r_gfx: z.Resource(z.Gfx)) void {
         const gfx = r_gfx.get();
 
+        if (gfx.swapchain_w == 0 or gfx.swapchain_h == 0) {
+            frame_started = false;
+            return;
+        }
+
         zgui.backend.newFrame(gfx.swapchain_w, gfx.swapchain_h, 1.0);
+        frame_started = true;
     }
 });
 
-pub const Render = z.System(&z.Pipeline.PostRender, struct {
+pub const Render = z.System(&z.Phase.PostRender, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
+        if (!frame_started) return;
+        frame_started = false;
+
         const gfx = res_gfx.getMut();
 
-        const cmd = gfx.cmd orelse {
-            std.debug.panic("No GPU Command Buffer acquired", .{});
-        };
+        const cmd = gfx.cmd orelse return;
 
         zgui.render();
 

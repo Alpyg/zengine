@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const wgui = @import("zgpu").wgpu;
-const zflecs = @import("zflecs");
 const zm = @import("zmath");
 
 const z = @import("../root.zig");
@@ -57,20 +55,23 @@ pub const Camera = struct {
     }
 };
 
-pub const UpdateCameraMatricesSystem = z.System(&z.Pipeline.PreRender, struct {
+pub const UpdateCameraMatricesSystem = z.System(&z.Phase.PrepareScene, struct {
     pub fn run(
-        gctx: z.Resource(z.Gfx),
+        r_renderer: z.Resource(z.Renderer),
         q_camera: z.Query(.{ z.Camera, z.GlobalTransform }, .{}),
     ) void {
-        const size = gctx.get().getRenderTargetSize();
+        const renderer = r_renderer.get();
+
+        if (renderer.scene_w == 0 or renderer.scene_h == 0) return;
+
+        const aspect_ratio =
+            @as(f32, @floatFromInt(renderer.scene_w)) /
+            @as(f32, @floatFromInt(renderer.scene_h));
 
         var camera_it = q_camera.iter();
         while (camera_it.next()) |camera_tuple| {
             var camera: *z.Camera, const transform: *z.GlobalTransform = camera_tuple;
-            camera.calculate_matrices(
-                transform,
-                @as(f32, @floatFromInt(size[0])) / @as(f32, @floatFromInt(size[1])),
-            );
+            camera.calculate_matrices(transform, aspect_ratio);
         }
     }
 });

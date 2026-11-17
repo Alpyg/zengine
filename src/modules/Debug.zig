@@ -1,7 +1,5 @@
 const std = @import("std");
 
-const wgpu = @import("wgpu");
-const zflecs = @import("zflecs");
 const zgui = @import("zgui");
 
 const z = @import("../root.zig");
@@ -12,13 +10,15 @@ pub fn init(_: DebugModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(DebugModule);
 }
 
-pub const DebugRender = z.System(&z.Pipeline.First, struct {
+pub const DebugRender = z.System(&z.Phase.Ui, struct {
     pub fn run(
         res_gfx: z.Resource(z.Gfx),
         res_input: z.Resource(z.Input),
     ) void {
         const gfx = res_gfx.get();
         const input = res_input.getMut();
+
+        if (!z.GuiModule.isFrameStarted()) return;
 
         if (input.getKey(.escape).just_pressed) {
             input.toggleCursor();
@@ -64,19 +64,32 @@ pub const DebugRender = z.System(&z.Pipeline.First, struct {
     }
 });
 
-pub const DebugUIViewportSystem = z.System(&z.Pipeline.Render, struct {
-    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
-        _ = res_gfx.get();
+pub const DebugUIViewportSystem = z.System(&z.Phase.Viewport, struct {
+    pub fn run(
+        r_gfx: z.Resource(z.Gfx),
+        r_renderer: z.Resource(z.Renderer),
+    ) void {
+        if (!z.GuiModule.isFrameStarted()) return;
 
-        if (zgui.begin("Main", .{})) {
-            if (zgui.begin("Viewport", .{})) {
-                // const avail = zgui.getContentRegionAvail();
+        const gfx = r_gfx.getMut();
+        const renderer = r_renderer.getMut();
 
-                // const tex_id = gfx.gctx.lookupResource(gfx.debug_texture_view).?;
-                // const tex_ref = zgui.TextureRef{ .tex_data = null, .tex_id = @fromBackingInt(@intCast(@intFromPtr(tex_id))) };
-                // zgui.image(tex_ref, .{ .w = avail[0], .h = avail[1] });
+        if (zgui.begin("Viewport", .{})) {
+            const avail = zgui.getContentRegionAvail();
+            const width_f = @max(1.0, avail[0]);
+            const height_f = @max(1.0, avail[1]);
+            const width: u32 = @intFromFloat(width_f);
+            const height: u32 = @intFromFloat(height_f);
+
+            if (renderer.ensureSceneTarget(gfx, width, height)) {
+                const binding = renderer.sceneBinding();
+                const tex_ref = zgui.TextureRef{
+                    .tex_data = null,
+                    .tex_id = @fromBackingInt(@intCast(@intFromPtr(binding))),
+                };
+
+                zgui.image(tex_ref, .{ .w = width_f, .h = height_f });
             }
-            zgui.end();
         }
         zgui.end();
     }

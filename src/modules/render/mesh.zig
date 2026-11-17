@@ -1,192 +1,278 @@
 const std = @import("std");
-const assert = std.debug.assert;
 
-const zgpu = @import("zgpu");
-const wgpu = zgpu.wgpu;
+const zsdl = @import("zsdl");
 
 const z = @import("../../root.zig");
 
-pub const VertexBuffers = struct {
-    vertex: zgpu.BufferHandle,
-    index: zgpu.BufferHandle,
+pub const GpuMesh = struct {
+    vertex_buffer: *zsdl.GPUBuffer,
+    index_buffer: *zsdl.GPUBuffer,
+    vertex_count: u32,
+    index_count: u32,
+    vertex_stride: u32,
 };
 
-pub fn Mesh(comptime attribute_formats: anytype) type {
-    const attrs = comptime @typeInfo(@TypeOf(attribute_formats)).@"struct";
-    const attrs_len = attrs.field_names.len;
+pub const Mesh = struct {
+    vertex_data: []u8,
+    index_data: []u8,
 
-    const mesh_attrs_types: [attrs_len]type = blk: {
-        var tmp: [attrs_len]type = undefined;
-        inline for (attrs.field_types, attrs.field_attrs, 0..) |field_type, field_attr, i| {
-            tmp[i] = vertexFormatToType(field_attr.defaultValue(field_type).?);
+    vertex_count: usize,
+    index_count: usize,
+    vertex_stride: u32,
+
+    attributes: []zsdl.GPUVertexAttribute,
+    formats: []zsdl.GPUVertexElementFormat,
+
+    allocator: std.mem.Allocator,
+
+    pub fn deinit(self: *Mesh) void {
+        self.allocator.free(self.vertex_data);
+        self.allocator.free(self.index_data);
+        self.allocator.free(self.attributes);
+        self.allocator.free(self.formats);
+    }
+
+    /// Build a Mesh from a tuple of `.{ format, slice }` pairs and an index array.
+    ///
+    /// The data may be passed as a slice or as a pointer to an array:
+    ///
+    /// ```zig
+    /// const mesh = try Mesh.from(allocator, .{
+    ///     .{ .float3, &[_][3]f32{ .{0,0,0}, .{1,0,0}, .{0,1,0} } },
+    ///     .{ .float3, &[_][3]f32{ .{1,0,0}, .{0,1,0}, .{0,0,1} } },
+    /// }, &[_]u32{ 0, 1, 2 });
+    /// ```
+    pub fn from(
+        allocator: std.mem.Allocator,
+        attributes: anytype,
+        indices: []const u32,
+    ) !Mesh {
+        const A = @TypeOf(attributes);
+        const info = @typeInfo(A).@"struct";
+
+        if (!info.is_tuple)
+            @compileError("Mesh.from: attributes must be a tuple of .{ format, slice } pairs");
+
+        const attr_count = info.field_names.len;
+        if (attr_count == 0) return error.NoAttributes;
+
+        const first_pair = @field(attributes, info.field_names[0]);
+        const first_items = attributeSlice(first_pair[1]);
+        const vertex_count: u32 = @intCast(first_items.len);
+
+        inline for (info.field_names[1..]) |name| {
+            const pair = @field(attributes, name);
+            const items = attributeSlice(pair[1]);
+            if (items.len != first_items.len) {
+                std.debug.panic(
+                    "Mesh.from: attribute {s} has {d} elements, expected {d}",
+                    .{ name, items.len, first_items.len },
+                );
+            }
         }
-        break :blk tmp;
-    };
 
-    const mesh_field_attrs: [attrs_len]std.builtin.Type.Struct.FieldAttributes = blk: {
-        var tmp: [attrs_len]std.builtin.Type.Struct.FieldAttributes = undefined;
-        for (&tmp) |*a| a.* = .{}; // or: @memset(&tmp, .{});
-        break :blk tmp;
-    };
+        const stride = comptime blk: {
+            var s: u32 = 0;
+            for (info.field_types) |FT| {
+                const pair_info = @typeInfo(FT).@"struct";
+                if (!pair_info.is_tuple or pair_info.field_types.len != 2)
+                    @compileError("Mesh.from: each attribute must be .{ format, slice }, got " ++ @typeName(FT));
 
-    const AttributeData = @Struct(
-        .auto,
-        null,
-        attrs.field_names,
-        &mesh_attrs_types,
-        &mesh_field_attrs,
-    );
+                const SliceT = pair_info.field_types[1];
+                const ElemT = std.meta.Elem(SliceT);
+                s += @sizeOf(ElemT);
+            }
+            break :blk s;
+        };
 
-    return struct {
-        pub const COMPONENT = {};
-        const Self = @This();
-        pub const Attributes = AttributeData;
+        const vertex_data = try allocator.alloc(u8, @as(usize, stride) * vertex_count);
+        errdefer allocator.free(vertex_data);
 
-        vertex_attributes: [attrs_len]wgpu.VertexAttribute = undefined,
-        vertex_buffer_layout: ?wgpu.VertexBufferLayout = undefined,
+        const index_data = try allocator.alloc(u8, indices.len * @sizeOf(u32));
+        errdefer allocator.free(index_data);
 
-        vertex_buffer: zgpu.BufferHandle = undefined,
-        index_buffer: zgpu.BufferHandle = undefined,
+        const gpu_attrs = try allocator.alloc(zsdl.GPUVertexAttribute, attr_count);
+        errdefer allocator.free(gpu_attrs);
 
-        vertex_count: u32 = 0,
-        index_count: u32 = 0,
+        const formats = try allocator.alloc(zsdl.GPUVertexElementFormat, attr_count);
+        errdefer allocator.free(formats);
 
-        pub fn init(allocator: std.mem.Allocator, attributes: Attributes, indices: []u32) Self {
-            var self = Self{};
-            self.initBuffers(allocator, attributes, indices);
-            return self;
-        }
+        var offset: u32 = 0;
+        inline for (info.field_names, 0..) |name, i| {
+            const pair = @field(attributes, name);
+            const fmt: zsdl.GPUVertexElementFormat = pair[0];
+            const items = attributeSlice(pair[1]);
+            const ElemT = std.meta.Elem(@TypeOf(pair[1]));
+            const elem_size: u32 = @sizeOf(ElemT);
 
-        fn initBuffers(self: *Self, allocator: std.mem.Allocator, attributes: Attributes, indices: []u32) void {
-            const gctx = z.gctx;
-
-            const vertex_size = sum: {
-                var sum: u32 = 0;
-                const field_types = comptime @typeInfo(Attributes).@"struct".field_types;
-                inline for (field_types) |field_type| {
-                    sum += vertexFormatTypeSize(field_type);
-                }
-                break :sum sum;
-            };
-
-            const vertex_count = blk: {
-                const field_names = @typeInfo(Attributes).@"struct".field_names;
-                if (field_names.len == 0) break :blk 0;
-                const field = @field(attributes, field_names[0]);
-                break :blk field.len;
-            };
-
-            const vertex_buffer = gctx.createBuffer(.{
-                .usage = .{ .copy_dst = true, .vertex = true },
-                .size = vertex_size * vertex_count,
-            });
-
-            const index_buffer = gctx.createBuffer(.{
-                .usage = .{ .copy_dst = true, .index = true },
-                .size = indices.len * @sizeOf(u32),
-            });
-
-            var offset: u32 = 0;
-            var vertex_data = allocator.alloc(u8, vertex_size * vertex_count) catch unreachable;
-            defer allocator.free(vertex_data);
-
-            inline for (attrs.field_names) |field_name| {
-                const field_value = @field(attributes, field_name);
-                if (field_value.len > 0) {
-                    for (field_value, 0..) |value, i| {
-                        const dst = vertex_data[i * vertex_size + offset .. i * vertex_size + offset + @sizeOf(@TypeOf(field_value[0]))];
-                        const src = @as([@sizeOf(@TypeOf(field_value[0]))]u8, @bitCast(value))[0..];
-                        @memcpy(dst, src);
-                    }
-                    offset += @sizeOf(@TypeOf(field_value[0]));
-                }
+            for (items, 0..) |v, vi| {
+                const dst = vertex_data[vi * stride + offset ..][0..elem_size];
+                const src = @as([elem_size]u8, @bitCast(v));
+                @memcpy(dst, &src);
             }
 
-            gctx.queue.writeBuffer(
-                gctx.lookupResource(vertex_buffer).?,
-                0,
-                u8,
-                vertex_data[0..],
-            );
-            gctx.queue.writeBuffer(
-                gctx.lookupResource(index_buffer).?,
-                0,
-                u32,
-                indices[0..],
-            );
-
-            self.vertex_buffer = vertex_buffer;
-            self.vertex_count = @intCast(vertex_count);
-            self.index_buffer = index_buffer;
-            self.index_count = @intCast(indices.len);
+            gpu_attrs[i] = .{
+                .location = i,
+                .buffer_slot = 0,
+                .format = fmt,
+                .offset = offset,
+            };
+            formats[i] = fmt;
+            offset += elem_size;
         }
 
-        pub fn deinit(self: *Self) void {
-            z.gctx.releaseResource(self.vertex_buffer);
-            z.gctx.releaseResource(self.index_buffer);
-        }
-    };
+        @memcpy(index_data, std.mem.sliceAsBytes(indices));
+
+        return .{
+            .vertex_data = vertex_data,
+            .index_data = index_data,
+            .vertex_count = vertex_count,
+            .index_count = indices.len,
+            .vertex_stride = stride,
+            .attributes = gpu_attrs,
+            .formats = formats,
+            .allocator = allocator,
+        };
+    }
+
+    pub fn upload(self: *const Mesh, gfx: *z.Gfx, cmd: *zsdl.GPUCommandBuffer) !GpuMesh {
+        const vertex_buffer = zsdl.createGPUBuffer(gfx.device, &.{
+            .usage = .{ .vertex = true },
+            .size = @intCast(self.vertex_data.len),
+        }) catch |err| {
+            std.log.err("createGPUBuffer(vertex) failed: {s}", .{zsdl.getError() orelse "unknown"});
+            return err;
+        };
+        errdefer zsdl.releaseGPUBuffer(gfx.device, vertex_buffer);
+
+        const index_buffer = zsdl.createGPUBuffer(gfx.device, &.{
+            .usage = .{ .index = true },
+            .size = @intCast(self.index_data.len),
+        }) catch |err| {
+            std.log.err("createGPUBuffer(index) failed: {s}", .{zsdl.getError() orelse "unknown"});
+            return err;
+        };
+        errdefer zsdl.releaseGPUBuffer(gfx.device, index_buffer);
+
+        const total_size: u32 = @intCast(self.vertex_data.len + self.index_data.len);
+        const transfer_buffer = zsdl.createGPUTransferBuffer(gfx.device, &.{
+            .usage = .upload,
+            .size = total_size,
+        }) catch |err| {
+            std.log.err("createGPUTransferBuffer failed: {s}", .{zsdl.getError() orelse "unknown"});
+            return err;
+        };
+        errdefer zsdl.releaseGPUTransferBuffer(gfx.device, transfer_buffer);
+
+        const mapped = zsdl.mapGPUTransferBuffer(gfx.device, transfer_buffer, false) catch |err| {
+            std.log.err("mapGPUTransferBuffer failed: {s}", .{zsdl.getError() orelse "unknown"});
+            return err;
+        };
+        const mapped_bytes: [*]u8 = @ptrCast(mapped);
+        @memcpy(mapped_bytes[0..self.vertex_data.len], self.vertex_data);
+        @memcpy(mapped_bytes[self.vertex_data.len..][0..self.index_data.len], self.index_data);
+        zsdl.unmapGPUTransferBuffer(gfx.device, transfer_buffer);
+
+        const copy_pass = zsdl.beginGPUCopyPass(cmd);
+
+        zsdl.uploadToGPUBuffer(copy_pass, &.{
+            .transfer_buffer = transfer_buffer,
+            .offset = 0,
+        }, &.{
+            .buffer = vertex_buffer,
+            .offset = 0,
+            .size = @intCast(self.vertex_data.len),
+        }, false);
+
+        zsdl.uploadToGPUBuffer(copy_pass, &.{
+            .transfer_buffer = transfer_buffer,
+            .offset = @intCast(self.vertex_data.len),
+        }, &.{
+            .buffer = index_buffer,
+            .offset = 0,
+            .size = @intCast(self.index_data.len),
+        }, false);
+
+        zsdl.endGPUCopyPass(copy_pass);
+
+        // The transfer buffer must stay alive until the command buffer has
+        // been submitted. Gfx releases these after submission.
+        try gfx.deferTransferBuffer(transfer_buffer);
+
+        return .{
+            .vertex_buffer = vertex_buffer,
+            .index_buffer = index_buffer,
+            .vertex_count = @intCast(self.vertex_count),
+            .index_count = @intCast(self.index_count),
+            .vertex_stride = self.vertex_stride,
+        };
+    }
+};
+
+fn attributeSlice(data: anytype) []const std.meta.Elem(@TypeOf(data)) {
+    return data;
 }
 
-pub fn vertexFormatToType(format: wgpu.VertexFormat) type {
+test "Mesh.from interleaves vertex attributes" {
+    const positions = [_][3]f32{
+        .{ 0.0, 0.5, 0.0 },
+        .{ -0.5, -0.5, 0.0 },
+        .{ 0.5, -0.5, 0.0 },
+    };
+    const colors = [_][3]f32{
+        .{ 1.0, 0.0, 0.0 },
+        .{ 0.0, 1.0, 0.0 },
+        .{ 0.0, 0.0, 1.0 },
+    };
+
+    var mesh = try Mesh.from(std.testing.allocator, .{
+        .{ .float3, &positions },
+        .{ .float3, &colors },
+    }, &[_]u32{ 0, 1, 2 });
+    defer mesh.deinit();
+
+    try std.testing.expectEqual(@as(usize, 3), mesh.vertex_count);
+    try std.testing.expectEqual(@as(usize, 3), mesh.index_count);
+    try std.testing.expectEqual(@as(u32, 24), mesh.vertex_stride);
+
+    const floats: [*]const f32 = @ptrCast(@alignCast(mesh.vertex_data.ptr));
+    try std.testing.expectEqual(@as(f32, 0.0), floats[0]);
+    try std.testing.expectEqual(@as(f32, 0.5), floats[1]);
+    try std.testing.expectEqual(@as(f32, 1.0), floats[3]);
+}
+
+pub fn vertexFormatToType(format: zsdl.GPUVertexElementFormat) type {
     return switch (format) {
-        .uint8x2 => [][2]u8,
-        .uint8x4 => [][4]u8,
+        .int => []i32,
+        .int2 => [][2]i32,
+        .int3 => [][3]i32,
+        .int4 => [][4]i32,
 
-        .sint8x2 => [][2]i8,
-        .sint8x4 => [][4]i8,
+        .uint => []u32,
+        .uint2 => [][2]u32,
+        .uint3 => [][3]u32,
+        .uint4 => [][4]u32,
 
-        .unorm8x2 => [][2]u8,
-        .unorm8x4 => [][4]u8,
+        .float => []f32,
+        .float2 => [][2]f32,
+        .float3 => [][3]f32,
+        .float4 => [][4]f32,
 
-        .snorm8x2 => [][2]i8,
-        .snorm8x4 => [][4]i8,
+        .byte2, .byte2_norm => [][2]i8,
+        .byte4, .byte4_norm => [][4]i8,
 
-        .uint16x2 => [][2]u16,
-        .uint16x4 => [][4]u16,
+        .ubyte2, .ubyte2_norm => [][2]u8,
+        .ubyte4, .ubyte4_norm => [][4]u8,
 
-        .sint16x2 => [][2]i16,
-        .sint16x4 => [][4]i16,
+        .short2, .short2_norm => [][2]i16,
+        .short4, .short4_norm => [][4]i16,
 
-        .unorm16x2 => [][2]u16,
-        .unorm16x4 => [][4]u16,
+        .ushort2, .ushort2_norm => [][2]u16,
+        .ushort4, .ushort4_norm => [][4]u16,
 
-        .snorm16x2 => [][2]i16,
-        .snorm16x4 => [][4]i16,
-
-        .float16x2 => [][2]f16,
-        .float16x4 => [][4]f16,
-
-        .float32 => []f32,
-        .float32x2 => [][2]f32,
-        .float32x3 => [][3]f32,
-        .float32x4 => [][4]f32,
-
-        .uint32 => []u32,
-        .uint32x2 => [][2]u32,
-        .uint32x3 => [][3]u32,
-        .uint32x4 => [][4]u32,
-
-        .sint32 => []i32,
-        .sint32x2 => [][2]i32,
-        .sint32x3 => [][3]i32,
-        .sint32x4 => [][4]i32,
+        .half2 => [][2]f16,
+        .half4 => [][4]f16,
 
         else => unreachable,
     };
-}
-
-pub fn vertexFormatTypeSize(format: anytype) u32 {
-    switch (@typeInfo(format)) {
-        .pointer => |ptr_info| {
-            if (ptr_info.size == .slice) {
-                return @sizeOf(ptr_info.child);
-            } else {
-                return @sizeOf(format);
-            }
-        },
-        else => {
-            return @sizeOf(format);
-        },
-    }
 }

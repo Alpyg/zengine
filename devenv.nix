@@ -13,6 +13,7 @@ in {
     [
       pkg-config
       vulkan-tools
+      glslang
     ]
     ++ libs;
 

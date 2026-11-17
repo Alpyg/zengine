@@ -101,7 +101,7 @@ pub const MouseMotionEvent = struct {
     position: [2]f32,
 };
 
-pub const LoadInput = z.System(&z.Pipeline.First, struct {
+pub const LoadInput = z.System(&z.Phase.First, struct {
     pub fn run(
         res_input: z.Resource(Input),
         key_writer: z.Event(KeyEvent).Writer,
@@ -185,7 +185,7 @@ pub const LoadInput = z.System(&z.Pipeline.First, struct {
     }
 });
 
-pub const InputEventClearSystem = z.System(&z.Pipeline.Last, struct {
+pub const InputEventClearSystem = z.System(&z.Phase.Last, struct {
     pub fn run(
         key: z.Event(KeyEvent).Writer,
         button: z.Event(MouseButtonEvent).Writer,

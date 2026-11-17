@@ -25,7 +25,7 @@ pub const Time = struct {
     gpu_frame_number: u64 = 0,
 };
 
-pub const UpdateTime = z.System(&z.Pipeline.First, struct {
+pub const UpdateTime = z.System(&z.Phase.First, struct {
     pub fn run(r_time: z.Resource(Time)) void {
         var time = r_time.getMut();
 

@@ -15,20 +15,29 @@ pub fn init(_: GfxModule, ecs: *z.Ecs) void {
 pub const Gfx = struct {
     pub const RESOURCE = {};
 
+    pub const depth_format: zsdl.GPUTextureFormat = .d32_float;
+
     device: *zsdl.GPUDevice = undefined,
     window: *zsdl.Window = undefined,
 
-    cmd: ?*zsdl.GPUCommandBuffer = undefined,
+    cmd: ?*zsdl.GPUCommandBuffer = null,
 
-    swapchain_texture: ?*zsdl.GPUTexture = undefined,
+    swapchain_texture: ?*zsdl.GPUTexture = null,
     swapchain_format: zsdl.GPUTextureFormat = undefined,
-    swapchain_w: u32 = undefined,
-    swapchain_h: u32 = undefined,
+    swapchain_w: u32 = 0,
+    swapchain_h: u32 = 0,
+
+    /// Transfer buffers used by asset uploads. They cannot be released until
+    /// the command buffer that references them has been submitted.
+    deferred_transfer_buffers: std.ArrayListUnmanaged(*zsdl.GPUTransferBuffer) = .empty,
 
     debug: bool = false,
 
+    allocator: std.mem.Allocator = undefined,
+
     pub fn init(ecs: *z.Ecs) Gfx {
         var self = Gfx{};
+        self.allocator = ecs.allocator;
 
         zsdl.init(.{ .audio = true, .video = true }) catch {
             std.debug.panic("Failed to init sdl: {any}", .{zsdl.getError().?});
@@ -51,18 +60,7 @@ pub const Gfx = struct {
         zsdl.claimWindowForGPUDevice(self.device, self.window) catch {
             std.debug.panic("Failed to claim Window for Device: {s}", .{zsdl.getError().?});
         };
-        self.cmd = zsdl.acquireGPUCommandBuffer(self.device) catch {
-            std.debug.panic("Failed to aquire GPU Command Buffer: {s}", .{zsdl.getError().?});
-        };
-        zsdl.waitAndAcquireGPUSwapchainTexture(
-            self.cmd.?,
-            self.window,
-            &self.swapchain_texture,
-            &self.swapchain_w,
-            &self.swapchain_h,
-        ) catch {
-            std.debug.panic("Could not acquire swapchain: {s}", .{zsdl.getError().?});
-        };
+
         self.swapchain_format = zsdl.getGPUSwapchainTextureFormat(self.device, self.window);
 
         _ = ecs.registerResource(self);
@@ -71,76 +69,29 @@ pub const Gfx = struct {
     }
 
     pub fn deinit(self: *Gfx) void {
+        zsdl.waitForGPUIdle(self.device) catch {};
+        self.releaseDeferredTransfers();
+        self.deferred_transfer_buffers.deinit(self.allocator);
+
         zsdl.releaseWindowFromGPUDevice(self.device, self.window);
         zsdl.destroyWindow(self.window);
         zsdl.destroyGPUDevice(self.device);
         zsdl.quit();
     }
 
-    // pub fn getRenderTarget(self: *const Gfx) wgpu.TextureView {
-    //     if (self.debug) {
-    //         return self.gctx.lookupResource(self.debug_texture_view).?;
-    //     }
-    //     return self.gctx.swapchain.getCurrentTextureView();
-    // }
-    //
-    // pub fn getRenderTargetSize(self: *const Gfx) [2]u32 {
-    //     if (self.debug) {
-    //         const avail = blk: {
-    //             defer zgui.end();
-    //             if (zgui.begin("Main", .{})) {
-    //                 defer zgui.end();
-    //                 if (zgui.begin("Viewport", .{})) {
-    //                     break :blk zgui.getWindowSize();
-    //                 }
-    //             }
-    //             break :blk .{ 0, 0 };
-    //         };
-    //         return .{
-    //             @as(u32, @intFromFloat(avail[0])),
-    //             @as(u32, @intFromFloat(avail[1])),
-    //         };
-    //     }
-    //     return .{
-    //         self.gctx.swapchain_descriptor.width,
-    //         self.gctx.swapchain_descriptor.height,
-    //     };
-    // }
-    //
-    // pub fn refreshRenderTargets(self: *Gfx) void {
-    //     self.gctx.releaseResource(self.depth_texture_view);
-    //     self.gctx.destroyResource(self.depth_texture);
-    //     self.depth_texture = self.gctx.createTexture(.{
-    //         .usage = .{ .render_attachment = true },
-    //         .dimension = .tdim_2d,
-    //         .size = .{
-    //             .width = self.gctx.swapchain_descriptor.width,
-    //             .height = self.gctx.swapchain_descriptor.height,
-    //             .depth_or_array_layers = 1,
-    //         },
-    //         .format = .depth32_float,
-    //         .mip_level_count = 1,
-    //         .sample_count = 1,
-    //     });
-    //     self.depth_texture_view = self.gctx.createTextureView(self.depth_texture, .{});
-    //
-    //     self.gctx.releaseResource(self.debug_texture_view);
-    //     self.gctx.destroyResource(self.debug_texture);
-    //     self.debug_texture = self.gctx.createTexture(.{
-    //         .usage = .{ .render_attachment = true, .texture_binding = true },
-    //         .dimension = .tdim_2d,
-    //         .size = .{
-    //             .width = self.gctx.swapchain_descriptor.width,
-    //             .height = self.gctx.swapchain_descriptor.height,
-    //         },
-    //         .format = .bgra8_unorm,
-    //     });
-    //
-    //     self.debug_texture_view = self.gctx.createTextureView(self.debug_texture, .{});
-    // }
+    pub fn deferTransferBuffer(self: *Gfx, buffer: *zsdl.GPUTransferBuffer) !void {
+        try self.deferred_transfer_buffers.append(self.allocator, buffer);
+    }
+
+    pub fn releaseDeferredTransfers(self: *Gfx) void {
+        for (self.deferred_transfer_buffers.items) |buffer| {
+            zsdl.releaseGPUTransferBuffer(self.device, buffer);
+        }
+        self.deferred_transfer_buffers.clearRetainingCapacity();
+    }
 };
 
-pub const PreRender = z.System(&z.Pipeline.PreRender, struct {
+pub const PreRender = z.System(&z.Phase.Acquire, struct {
     pub fn run(res_gfx: z.Resource(Gfx)) void {
         var gfx = res_gfx.getMut();
 
@@ -160,18 +111,17 @@ pub const PreRender = z.System(&z.Pipeline.PreRender, struct {
     }
 });
 
-pub const Render = z.System(&z.Pipeline.Last, struct {
+pub const Render = z.System(&z.Phase.Last, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
         var gfx = res_gfx.getMut();
 
-        const cmd = gfx.cmd orelse {
-            std.debug.panic("No GPU Command Buffer acquired", .{});
-        };
+        const cmd = gfx.cmd orelse return;
 
         _ = zsdl.submitGPUCommandBuffer(cmd) catch {
             std.debug.panic("Could not submit GPU Command Buffer: {s}", .{zsdl.getError().?});
         };
 
+        gfx.releaseDeferredTransfers();
         gfx.cmd = null;
         gfx.swapchain_texture = null;
     }
