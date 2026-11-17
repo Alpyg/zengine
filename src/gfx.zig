@@ -1,3 +1,7 @@
+//! SDL3 GPU context: owns the device, window, swapchain and the per-frame
+//! command buffer. One command buffer is acquired in `Acquire` and submitted in
+//! `Last`; rendering systems draw in between.
+
 const std = @import("std");
 
 const zsdl = @import("zsdl");
@@ -15,13 +19,16 @@ pub fn init(_: GfxModule, ecs: *z.Ecs) void {
 pub const Gfx = struct {
     pub const RESOURCE = {};
 
+    /// Format used by all depth-stencil targets.
     pub const depth_format: zsdl.GPUTextureFormat = .d32_float;
 
     device: *zsdl.GPUDevice = undefined,
     window: *zsdl.Window = undefined,
 
+    /// Command buffer for the current frame; null between frames.
     cmd: ?*zsdl.GPUCommandBuffer = null,
 
+    /// Swapchain texture acquired for the current frame.
     swapchain_texture: ?*zsdl.GPUTexture = null,
     swapchain_format: zsdl.GPUTextureFormat = undefined,
     swapchain_w: u32 = 0,
@@ -31,10 +38,13 @@ pub const Gfx = struct {
     /// the command buffer that references them has been submitted.
     deferred_transfer_buffers: std.ArrayListUnmanaged(*zsdl.GPUTransferBuffer) = .empty,
 
+    /// Reserved debug flag; currently unused.
     debug: bool = false,
 
     allocator: std.mem.Allocator = undefined,
 
+    /// Initializes SDL, creates the GPU device and window, claims the window
+    /// for the device and registers this as a resource.
     pub fn init(ecs: *z.Ecs) Gfx {
         var self = Gfx{};
         self.allocator = ecs.allocator;
@@ -68,6 +78,8 @@ pub const Gfx = struct {
         return self;
     }
 
+    /// Waits for the GPU to go idle, releases deferred transfers and destroys
+    /// the window, device and SDL.
     pub fn deinit(self: *Gfx) void {
         zsdl.waitForGPUIdle(self.device) catch {};
         self.releaseDeferredTransfers();
@@ -79,10 +91,13 @@ pub const Gfx = struct {
         zsdl.quit();
     }
 
+    /// Keeps an upload buffer alive until the current command buffer is
+    /// submitted.
     pub fn deferTransferBuffer(self: *Gfx, buffer: *zsdl.GPUTransferBuffer) !void {
         try self.deferred_transfer_buffers.append(self.allocator, buffer);
     }
 
+    /// Releases all deferred transfer buffers. Called after submission.
     pub fn releaseDeferredTransfers(self: *Gfx) void {
         for (self.deferred_transfer_buffers.items) |buffer| {
             zsdl.releaseGPUTransferBuffer(self.device, buffer);
@@ -91,6 +106,8 @@ pub const Gfx = struct {
     }
 };
 
+/// System: acquires the frame's command buffer and swapchain texture. Skipped
+/// swapchain acquisition (e.g. minimized window) yields a zero-sized swapchain.
 pub const PreRender = z.System(&z.Phase.Acquire, struct {
     pub fn run(res_gfx: z.Resource(Gfx)) void {
         var gfx = res_gfx.getMut();
@@ -111,6 +128,8 @@ pub const PreRender = z.System(&z.Phase.Acquire, struct {
     }
 });
 
+/// System: submits the frame's command buffer, then releases deferred transfer
+/// buffers and clears per-frame state.
 pub const Render = z.System(&z.Phase.Last, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
         var gfx = res_gfx.getMut();

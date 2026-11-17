@@ -1,9 +1,15 @@
+//! Material template: a graphics pipeline built from SPIR-V shaders plus the
+//! per-draw uniform values pushed to the GPU. Vertex layout and uniform block
+//! layout are derived from types at comptime.
+
 const std = @import("std");
 
 const zsdl = @import("zsdl");
 
 const z = @import("../root.zig");
 
+/// Compiled shader pair and the entrypoint/uniform-buffer counts needed to
+/// create the pipeline stages.
 pub const ShaderSrc = struct {
     /// Compiled SPIR-V bytes for the vertex stage.
     vertex: []const u8,
@@ -111,6 +117,7 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
         pub const VertexAttributes = V;
         pub const vertex_stride = stride;
 
+        /// Graphics pipeline created from the shader pair and vertex layout.
         pipeline: *zsdl.GPUGraphicsPipeline,
         vertex_shader: *zsdl.GPUShader,
         fragment_shader: *zsdl.GPUShader,
@@ -118,6 +125,7 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
         /// CPU-side mirror of the pushed uniform data.
         uniforms: T,
 
+        /// Device used to release the pipeline and shaders.
         device: *zsdl.GPUDevice,
 
         /// Build the pipeline. The vertex layout is derived from `V` at comptime;
@@ -241,6 +249,8 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
             self.pushUniforms(cmd);
         }
 
+        /// Push `self.uniforms` into the vertex and (if used) fragment uniform
+        /// slots.
         pub fn pushUniforms(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {
             const bytes: *const anyopaque = @ptrCast(&self.uniforms);
             const len: u32 = @intCast(@sizeOf(T));

@@ -1,3 +1,14 @@
+//! ECS facade over flecs. Owns the world, registers modules/components/
+//! resources/events/systems, and drives the frame loop with `progress`/`run`.
+//!
+//! Registration conventions:
+//! - a type with `RESOURCE` is a singleton resource; `init(ecs)` is called once
+//! - a type with `COMPONENT` is a component, or a tag when it is zero-sized
+//! - a type with `Phase` + `run` is a system (`System(...)` produces these)
+//! - a type with `EVENT_QUEUE` comes from `Event(T)`
+//! - any other struct is treated as a namespace and its declarations are
+//!   registered recursively (non-systems first, then systems)
+
 const std = @import("std");
 const builtin = @import("builtin");
 
@@ -16,6 +27,7 @@ pub const Without = @import("query.zig").Without;
 
 const Ecs = @This();
 
+/// Set by the SIGINT/SIGTERM handler.
 var signal_exit_requested = std.atomic.Value(bool).init(false);
 
 fn handleSignal(_: std.posix.SIG) callconv(.c) void {
@@ -36,9 +48,14 @@ fn installSignalHandlers() void {
 }
 
 allocator: std.mem.Allocator = undefined,
+
+/// Underlying flecs world.
 world: *zflecs.world_t = undefined,
+
+/// Set by `quit`; checked by `run`.
 should_exit: bool = false,
 
+/// Creates the world, initializes the phases and registers image loading.
 pub fn init(allocator: std.mem.Allocator) *Ecs {
     const self = allocator.create(Ecs) catch @panic("oom");
     self.* = .{ .allocator = allocator, .world = zflecs.init() };
@@ -48,15 +65,18 @@ pub fn init(allocator: std.mem.Allocator) *Ecs {
     return self;
 }
 
+/// Destroys the flecs world and the `Ecs` allocation.
 pub fn deinit(self: *Ecs) void {
     _ = zflecs.fini(self.world);
     self.allocator.destroy(self);
 }
 
+/// Runs one frame: all systems in phase order.
 pub fn progress(self: *Ecs) void {
     _ = zflecs.progress(self.world, 0);
 }
 
+/// Runs frames until `quit` is called or a termination signal arrives.
 pub fn run(self: *Ecs) void {
     installSignalHandlers();
 
@@ -65,14 +85,18 @@ pub fn run(self: *Ecs) void {
     }
 }
 
+/// Requests that `run` stop after the current frame.
 pub fn quit(self: *Ecs) void {
     self.should_exit = true;
 }
 
+/// Creates an entity with a debug name.
 pub fn new(self: *Ecs, name: [:0]const u8) zflecs.entity_t {
     return zflecs.new_entity(self.world, name);
 }
 
+/// Adds one or more components. Accepts a component value, a component type
+/// (for zero-sized tags), or a tuple of either.
 pub fn add(self: *Ecs, entity: zflecs.entity_t, components: anytype) *Ecs {
     const components_info = @typeInfo(@TypeOf(components));
     if (components_info != .@"struct" and components_info != .type) {
@@ -99,6 +123,9 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
     }
 }
 
+/// Registers `T` according to the conventions listed above. For namespaces,
+/// all nested declarations are registered: resources/components/events first,
+/// then systems, so system arguments can always resolve their dependencies.
 pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     if (isSystem(T)) {
         _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
@@ -162,6 +189,7 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     return self;
 }
 
+/// Instantiates a module and calls its `init(module, ecs)`.
 pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     const ModuleType = @TypeOf(module);
 
@@ -174,6 +202,7 @@ pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     return self;
 }
 
+/// Registers an `Event(T)` queue as a singleton.
 pub fn registerEvent(self: *Ecs, E: type) *Ecs {
     zflecs.COMPONENT(self.world, E);
     _ = zflecs.singleton_set(self.world, E, E.init(self));
@@ -183,6 +212,7 @@ pub fn registerEvent(self: *Ecs, E: type) *Ecs {
     return self;
 }
 
+/// Registers an already-constructed singleton resource. No-op if one exists.
 pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
     const ResourceType = @TypeOf(resource);
 
@@ -212,10 +242,12 @@ pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
     return self;
 }
 
+/// Whether the singleton resource `T` is already registered.
 pub fn hasResource(self: *Ecs, comptime T: type) bool {
     return zflecs.id(T) != 0 and zflecs.singleton_get(self.world, T) != null;
 }
 
+/// Registers every type declaration of `T` as a component or tag.
 pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
     const decl_names = @typeInfo(T).@"struct".decl_names;
     inline for (decl_names) |decl_name| {
@@ -234,6 +266,7 @@ pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
     return self;
 }
 
+/// Registers every system found in the declarations of `T`.
 pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     if (isSystem(T)) {
         _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
@@ -253,6 +286,7 @@ pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     return self;
 }
 
+/// Creates a phase entity and chains it after `depends_on` (if any).
 pub fn registerPhase(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.entity_t) *Ecs {
     phase.* = zflecs.new_w_id(self.world, zflecs.Phase);
 

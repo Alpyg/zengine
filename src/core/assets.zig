@@ -1,7 +1,11 @@
+//! Asset collection backed by a zpool storage pool. Each asset type gets its
+//! own `Assets(T)` singleton; consumers read assets through stable `Handle`s.
+
 const std = @import("std");
 
 const zpool = @import("zpool");
 
+/// Singleton collection of `T` assets, injected into systems as a resource.
 pub fn Assets(
     comptime T: type,
 ) type {
@@ -12,6 +16,8 @@ pub fn Assets(
 
         const Self = @This();
 
+        /// Generational handle to a stored asset. Comparing handles is safe
+        /// across removals.
         pub const Handle = Pool.Handle;
         const Column = Pool.Column;
         const ColumnType = Pool.ColumnType;
@@ -37,6 +43,7 @@ pub fn Assets(
             };
         }
 
+        /// Calls `deinit` on every live asset, if the type declares one.
         pub fn deinit(self: *Self) void {
             for (self.handles.items) |handle| {
                 if (self.pool.getColumnsIfLive(handle)) |value| {
@@ -51,6 +58,7 @@ pub fn Assets(
             self.pool.deinit();
         }
 
+        /// Adds an asset and queues its handle in `pending`.
         pub fn add(self: *Self, value: T) !Handle {
             const handle = try self.pool.add(value);
             errdefer _ = self.pool.removeIfLive(handle);
@@ -63,10 +71,12 @@ pub fn Assets(
             return handle;
         }
 
+        /// Overwrites a live asset in place.
         pub fn set(self: *Self, handle: Handle, value: T) !void {
             try self.pool.setColumns(handle, value);
         }
 
+        /// Removes an asset and drops its bookkeeping entries.
         pub fn remove(self: *Self, handle: Handle) !void {
             try self.pool.remove(handle);
             for (self.handles.items, 0..) |tracked, i| {
@@ -83,6 +93,7 @@ pub fn Assets(
             }
         }
 
+        /// Pops the next queued upload handle, or null when drained.
         pub fn popPending(self: *Self) ?Handle {
             return self.pending.pop();
         }
@@ -95,6 +106,8 @@ pub fn Assets(
             return try self.pool.getColumns(handle);
         }
 
+        /// Like `getColumns`, but returns null for dead handles instead of an
+        /// error.
         pub fn getColumnsIfLive(self: *Self, handle: Handle) ?Pool.Columns {
             return self.pool.getColumnsIfLive(handle);
         }

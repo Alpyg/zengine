@@ -1,3 +1,6 @@
+//! Public API surface. Re-exports the vendored libraries, the ECS, the engine
+//! modules and their components/resources so demos can `@import("z")` only.
+
 const std = @import("std");
 
 pub const zflecs = @import("zflecs");

@@ -1,3 +1,9 @@
+//! Render module: GPU mesh cache, offscreen scene target, scene pass systems
+//! and the per-material draw systems.
+//!
+//! `RenderModule` registers the shared resources and the upload/pass systems;
+//! `MaterialPlugin(M)` adds the assets and draw system for one material type.
+
 const std = @import("std");
 
 const zsdl = @import("zsdl");
@@ -18,6 +24,7 @@ pub const MeshRef = struct {
     handle: z.Assets(Mesh).Handle,
 };
 
+/// Component referring to a material asset of type `M`.
 pub fn MaterialRef(comptime M: type) type {
     return struct {
         pub const COMPONENT = {};
@@ -109,6 +116,7 @@ pub const Renderer = struct {
         self.allocator.destroy(self.scene_binding);
     }
 
+    /// Binding passed to ImGui as the texture id for the scene image.
     pub fn sceneBinding(self: *Renderer) *zsdl.GPUTextureSamplerBinding {
         return self.scene_binding;
     }
@@ -138,6 +146,8 @@ pub const Renderer = struct {
         return true;
     }
 
+    /// Creates or recreates the offscreen color/depth targets when the size
+    /// changes. Returns false on allocation failure or a zero-sized viewport.
     pub fn ensureSceneTarget(self: *Renderer, gfx: *z.Gfx, width: u32, height: u32) bool {
         if (width == 0 or height == 0) return false;
 
@@ -204,6 +214,8 @@ pub const Renderer = struct {
         return true;
     }
 
+    /// Begins the scene render pass into the offscreen targets. Returns false
+    /// if the targets or command buffer are not ready.
     pub fn begin(self: *Renderer, gfx: *z.Gfx) bool {
         const color = self.scene_color orelse return false;
         const depth = self.scene_depth orelse return false;
@@ -235,6 +247,7 @@ pub const Renderer = struct {
         return true;
     }
 
+    /// Ends the scene render pass, if one is active.
     pub fn end(self: *Renderer) void {
         if (self.pass) |pass| {
             zsdl.endGPURenderPass(pass);
@@ -270,6 +283,7 @@ pub const UploadSetupMeshes = z.System(&z.Phase.PreRender, struct {
     }
 });
 
+/// System: opens the scene render pass into the offscreen target.
 pub const BeginScene = z.System(&z.Phase.RenderBegin, struct {
     pub fn run(
         r_gfx: z.Resource(z.Gfx),
@@ -279,6 +293,7 @@ pub const BeginScene = z.System(&z.Phase.RenderBegin, struct {
     }
 });
 
+/// System: closes the scene render pass.
 pub const EndScene = z.System(&z.Phase.RenderEnd, struct {
     pub fn run(r_renderer: z.Resource(Renderer)) void {
         r_renderer.getMut().end();
@@ -350,6 +365,8 @@ pub fn DrawMaterial(comptime M: type) type {
     });
 }
 
+/// Registers the mesh/material/renderer resources and the shared render
+/// systems.
 pub fn init(_: RenderModule, ecs: *z.Ecs) void {
     if (!ecs.hasResource(z.Assets(Mesh)))
         _ = ecs.registerResource(z.Assets(Mesh).init(ecs.allocator));
@@ -364,6 +381,8 @@ pub fn init(_: RenderModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(EndScene);
 }
 
+/// Module factory that registers the asset collection for material type `M`,
+/// its `MaterialRef(M)` component and the matching draw system.
 pub fn MaterialPlugin(comptime M: type) type {
     return struct {
         pub fn init(_: @This(), ecs: *z.Ecs) void {

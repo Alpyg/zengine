@@ -1,3 +1,11 @@
+//! Wraps a plain `run` function into a flecs system with pre-bound arguments.
+//!
+//! At registration time `init` walks the function's parameters and fills a
+//! static argument tuple: `*Ecs` and `*world_t` are passed through, while any
+//! other parameter type with an `init(world)` method (resources, queries,
+//! event writers) is initialized once. The generated `run` simply forwards the
+//! stored tuple to the user function.
+
 const std = @import("std");
 
 const zflecs = @import("zflecs");
@@ -12,6 +20,7 @@ pub fn System(phase: *zflecs.entity_t, comptime S: anytype) type {
         const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
         var args_tuple: ArgsTupleType = undefined;
 
+        /// Initializes the argument tuple. Called once by `Ecs.registerEcs`.
         pub fn init(ecs: anytype) void {
             inline for (param_types, 0..) |param_type, i| {
                 const pt = param_type orelse continue;
@@ -29,6 +38,7 @@ pub fn System(phase: *zflecs.entity_t, comptime S: anytype) type {
             }
         }
 
+        /// Deinitializes any argument type that exposes `deinit`.
         pub fn deinit() void {
             const fields = @typeInfo(ArgsTupleType).@"struct";
             inline for (fields.field_names, fields.field_types) |arg_name, arg_type| {
@@ -38,6 +48,7 @@ pub fn System(phase: *zflecs.entity_t, comptime S: anytype) type {
             }
         }
 
+        /// Flecs system entry point.
         pub fn run(_: *zflecs.iter_t) void {
             @call(.auto, S.run, args_tuple);
         }

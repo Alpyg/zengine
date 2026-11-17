@@ -1,3 +1,10 @@
+//! Compile-time query builder on top of flecs.
+//!
+//! `Query(Components, Filters)` describes which components to fetch and which
+//! filters to apply. Components listed directly are required; `?T` makes them
+//! optional. `Filters` accepts `With(T)`, `Without(T)` and `Parent(T)`.
+//! Iterating yields pointers (or optionals of pointers) into flecs' tables.
+
 const std = @import("std");
 
 const z = @import("../root.zig");
@@ -57,6 +64,7 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
             self.query = undefined;
         }
 
+        /// Starts a new iteration from the first matching table.
         pub fn iter(self: *const Self) Iter {
             return Iter.init(self.world, self.query);
         }
@@ -107,6 +115,7 @@ fn parseQueryType(comptime C: type) type {
     }
 }
 
+/// Filter: the entity must have component `C`.
 pub fn With(comptime C: type) type {
     return struct {
         pub const Inner = C;
@@ -119,6 +128,7 @@ pub fn With(comptime C: type) type {
     };
 }
 
+/// Filter: the entity must not have component `C`.
 pub fn Without(comptime C: type) type {
     return struct {
         pub const Inner = C;
@@ -132,6 +142,8 @@ pub fn Without(comptime C: type) type {
     };
 }
 
+/// Filter: also fetch component `C` from the entity's parent (`ChildOf`
+/// cascade).
 pub fn Parent(comptime C: type) type {
     return struct {
         pub const Inner = C;
@@ -146,6 +158,8 @@ pub fn Parent(comptime C: type) type {
     };
 }
 
+/// Iterator over the tables matched by a `Query`. `next` returns a pointer per
+/// component; with several components it returns a tuple of pointers.
 fn QueryIter(comptime QueryTypes: anytype) type {
     comptime var TableTypes: [QueryTypes.len]type = undefined;
     comptime var ComponentTypes: [QueryTypes.len]type = undefined;
@@ -185,10 +199,12 @@ fn QueryIter(comptime QueryTypes: anytype) type {
             return Self{ .it = it };
         }
 
+        /// Number of entities in the current table.
         pub fn count(self: *Self) usize {
             return self.it.count();
         }
 
+        /// Advances to the next entity, or null when all tables are exhausted.
         pub fn next(self: *Self) ?Components {
             if (!self.started or self.index >= self.tables[0].len) {
                 if (!zflecs.query_next(&self.it)) {

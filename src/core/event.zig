@@ -1,3 +1,8 @@
+//! Double-buffered event queue. Writers append values to an arena-backed
+//! intrusive list and readers consume the same list in order. The queue is
+//! cleared once per frame by `EventClearSystem` (or manually by a system), so
+//! consumers must read events in the same frame they were sent.
+
 const std = @import("std");
 
 const zflecs = @import("zflecs");
@@ -5,6 +10,7 @@ const zflecs = @import("zflecs");
 const z = @import("../root.zig");
 const Ecs = z.Ecs;
 
+/// Event queue for values of type `T`, stored as a singleton resource.
 pub fn Event(comptime T: type) type {
     return struct {
         const Self = @This();
@@ -29,6 +35,7 @@ pub fn Event(comptime T: type) type {
             };
         }
 
+        /// Injected into systems to append events.
         pub const Writer = struct {
             impl: *WriterImpl,
 
@@ -40,6 +47,7 @@ pub fn Event(comptime T: type) type {
                 try self.impl.send(value);
             }
 
+            /// Drops all queued events.
             pub fn clear(self: Writer) void {
                 self.impl.clear();
             }
@@ -66,6 +74,7 @@ pub fn Event(comptime T: type) type {
             }
         };
 
+        /// Injected into systems to drain events.
         pub const Reader = struct {
             impl: *ReaderImpl,
 
@@ -73,6 +82,7 @@ pub fn Event(comptime T: type) type {
                 return Reader{ .impl = &zflecs.singleton_get_mut(world, Self).?.reader };
             }
 
+            /// Returns the next event, or null once the queue is exhausted.
             pub fn read(self: Reader) ?T {
                 return self.impl.read();
             }
@@ -96,6 +106,7 @@ pub fn Event(comptime T: type) type {
             }
         };
 
+        /// System: clears the queue at the end of the frame.
         pub const EventClearSystem = z.System(struct {
             pub const phase = &z.Phase.Last;
 

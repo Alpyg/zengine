@@ -1,3 +1,9 @@
+//! Dear ImGui integration through zgui's SDL3 GPU backend.
+//!
+//! Frame lifecycle: `PreRender` starts the ImGui frame, `Ui`/`Viewport`
+//! systems submit widgets, and `Render` draws the accumulated geometry into the
+//! swapchain.
+
 const std = @import("std");
 
 const zflecs = @import("zflecs");
@@ -8,12 +14,16 @@ const z = @import("root.zig");
 
 const GuiModule = @This();
 
+/// True between `PreRender` and `Render` of the current frame.
 var frame_started: bool = false;
 
+/// Whether an ImGui frame is active. UI systems should skip work when false.
 pub fn isFrameStarted() bool {
     return frame_started;
 }
 
+/// Initializes zgui, loads the UI font and creates the SDL3 GPU backend,
+/// docking enabled by default.
 pub fn init(_: GuiModule, ecs: *z.Ecs) void {
     zgui.init(ecs.allocator);
 
@@ -41,6 +51,8 @@ pub fn deinit(_: *z.Ecs) void {
     zgui.deinit();
 }
 
+/// System: starts an ImGui frame sized to the swapchain. No frame is started
+/// while the window is minimized (zero-sized swapchain).
 pub const PreRender = z.System(&z.Phase.PreRender, struct {
     pub fn run(r_gfx: z.Resource(z.Gfx)) void {
         const gfx = r_gfx.get();
@@ -55,6 +67,8 @@ pub const PreRender = z.System(&z.Phase.PreRender, struct {
     }
 });
 
+/// System: renders the ImGui draw data into the swapchain, clearing it to dark
+/// gray first.
 pub const Render = z.System(&z.Phase.PostRender, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
         if (!frame_started) return;

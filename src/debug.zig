@@ -1,3 +1,6 @@
+//! Editor UI: a fullscreen dockspace with `Main` and `Tool` tabs, plus the
+//! `Viewport` window that displays the offscreen scene texture.
+
 const std = @import("std");
 
 const zgui = @import("zgui");
@@ -10,6 +13,9 @@ pub fn init(_: DebugModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(DebugModule);
 }
 
+/// System: toggles mouse-look on Escape and submits the editor dockspace.
+/// `Dockspace` spans the window; `Main` and `Tool` are tabs inside it, each
+/// hosting its own nested dockspace.
 pub const DebugRender = z.System(&z.Phase.Ui, struct {
     pub fn run(
         res_gfx: z.Resource(z.Gfx),
@@ -64,6 +70,8 @@ pub const DebugRender = z.System(&z.Phase.Ui, struct {
     }
 });
 
+/// System: draws the offscreen scene texture inside the `Viewport` window,
+/// recreating the render target when the window size changes.
 pub const DebugUIViewportSystem = z.System(&z.Phase.Viewport, struct {
     pub fn run(
         r_gfx: z.Resource(z.Gfx),

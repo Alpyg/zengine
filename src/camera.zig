@@ -1,3 +1,6 @@
+//! Camera component and the system that derives its matrices from the world
+//! transform.
+
 const std = @import("std");
 
 const zm = @import("zmath");
@@ -10,9 +13,12 @@ pub fn init(_: CameraModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(CameraModule);
 }
 
+/// Tag marking the entity used for rendering.
 pub const MainCamera = struct {
     pub const COMPONENT = {};
 };
+
+/// Component: perspective camera parameters and derived matrices.
 pub const Camera = struct {
     pub const COMPONENT = {};
     const Self = @This();
@@ -55,6 +61,8 @@ pub const Camera = struct {
     }
 };
 
+/// System: updates every camera's matrices from its world transform and the
+/// current scene viewport aspect ratio.
 pub const UpdateCameraMatricesSystem = z.System(&z.Phase.PrepareScene, struct {
     pub fn run(
         r_renderer: z.Resource(z.Renderer),

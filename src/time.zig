@@ -1,3 +1,5 @@
+//! Frame timing: elapsed time, delta time and frame-rate statistics.
+
 const std = @import("std");
 
 const zsdl = @import("zsdl");
@@ -14,17 +16,35 @@ pub fn init(_: TimeModule, ecs: *z.Ecs) void {
 pub const Time = struct {
     pub const RESOURCE = {};
 
+    /// Total elapsed time in seconds.
     time: f64 = 0.0,
+
+    /// Seconds since the previous update.
     delta_time: f32 = 0.0,
+
+    /// Frames counted in the current FPS window.
     fps_counter: u32 = 0,
+
+    /// Frames per second over the latest window.
     fps: f64 = 0.0,
+
+    /// Exponentially smoothed CPU frame time in seconds.
     average_cpu_time: f64 = 0.0,
+
+    /// Timestamp of the previous update, in SDL ticks (nanoseconds).
     previous_time: f64 = 0.0,
+
+    /// Start timestamp of the current FPS window, in nanoseconds.
     fps_refresh_time: f64 = 0.0,
+
+    /// Number of update ticks processed.
     cpu_frame_number: u64 = 0,
+
+    /// GPU submit counter. Currently unused.
     gpu_frame_number: u64 = 0,
 };
 
+/// System: advances `Time` once per frame from SDL's clock.
 pub const UpdateTime = z.System(&z.Phase.First, struct {
     pub fn run(r_time: z.Resource(Time)) void {
         var time = r_time.getMut();

@@ -1,9 +1,14 @@
+//! Meshes: CPU-side interleaved vertex/index data and GPU buffers. `Mesh.from`
+//! packs attributes into an interleaved layout; `upload` copies the data into
+//! vertex/index buffers through a transfer buffer.
+
 const std = @import("std");
 
 const zsdl = @import("zsdl");
 
 const z = @import("../root.zig");
 
+/// GPU buffers backing a mesh plus the counts and stride needed to draw it.
 pub const GpuMesh = struct {
     vertex_buffer: *zsdl.GPUBuffer,
     index_buffer: *zsdl.GPUBuffer,
@@ -12,15 +17,21 @@ pub const GpuMesh = struct {
     vertex_stride: u32,
 };
 
+/// CPU-side mesh data, owned by `Assets(Mesh)`.
 pub const Mesh = struct {
+    /// Interleaved vertex bytes (one row per vertex).
     vertex_data: []u8,
+    /// 32-bit index bytes.
     index_data: []u8,
 
     vertex_count: usize,
     index_count: usize,
+    /// Bytes per interleaved vertex.
     vertex_stride: u32,
 
+    /// GPU vertex attributes, with locations assigned in declaration order.
     attributes: []zsdl.GPUVertexAttribute,
+    /// Format of each attribute, in the same order as `attributes`.
     formats: []zsdl.GPUVertexElementFormat,
 
     allocator: std.mem.Allocator,
@@ -135,6 +146,8 @@ pub const Mesh = struct {
         };
     }
 
+    /// Uploads the CPU data into new vertex/index buffers using `cmd`.
+    /// The transfer buffer is deferred on `gfx` until submission.
     pub fn upload(self: *const Mesh, gfx: *z.Gfx, cmd: *zsdl.GPUCommandBuffer) !GpuMesh {
         const vertex_buffer = zsdl.createGPUBuffer(gfx.device, &.{
             .usage = .{ .vertex = true },
@@ -241,6 +254,8 @@ test "Mesh.from interleaves vertex attributes" {
     try std.testing.expectEqual(@as(f32, 1.0), floats[3]);
 }
 
+/// Maps an SDL vertex element format to the matching Zig slice type, e.g.
+/// `.float3 => [][3]f32`. Used when declaring vertex layouts by format.
 pub fn vertexFormatToType(format: zsdl.GPUVertexElementFormat) type {
     return switch (format) {
         .int => []i32,

@@ -1,9 +1,16 @@
+//! Keyboard and mouse polling. `LoadInput` samples SDL once per frame in
+//! `Phase.First` and publishes edge-triggered events that are cleared at the
+//! end of the frame.
+
 const std = @import("std");
 
 const zflecs = @import("zflecs");
 const zgui = @import("zgui");
 const zsdl = @import("zsdl");
+
+/// Physical key scancode.
 pub const Key = zsdl.Scancode;
+/// Mouse button, matching SDL's button bit order.
 pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
 
 const z = @import("root.zig");
@@ -17,13 +24,22 @@ pub fn init(_: InputModule, ecs: *z.Ecs) void {
 pub const Input = struct {
     pub const RESOURCE = {};
 
+    /// Latest state of every key seen so far.
     key_states: std.AutoHashMap(Key, InputState) = undefined,
+
+    /// Latest state of every mouse button seen so far.
     mouse_states: std.AutoHashMap(Mouse, InputState) = undefined,
 
+    /// True while mouse-look mode is enabled.
     cursor_disabled: bool = false,
+
+    /// Cursor position in window coordinates at the end of the last frame.
     cursor_position: [2]f32 = undefined,
+
+    /// Cursor movement since the previous frame.
     mouse_delta: [2]f32 = undefined,
 
+    /// Window used for cursor visibility operations.
     gfx: *const z.Gfx = undefined,
 
     pub fn init(ecs: *z.Ecs) Input {
@@ -47,26 +63,33 @@ pub const Input = struct {
         self.mouse_delta = undefined;
     }
 
+    /// State of `key`. The key must have been sampled at least once.
     pub fn getKey(self: *const Input, key: Key) InputState {
         return self.key_states.get(key).?;
     }
 
+    /// State of `button`. The button must have been sampled at least once.
     pub fn getButton(self: *const Input, button: Mouse) InputState {
         return self.mouse_states.get(button).?;
     }
 
+    /// Cursor position in window coordinates.
     pub fn getCursorPos(self: *const Input) [2]f32 {
         return self.cursor_position;
     }
 
+    /// Cursor movement since the previous frame.
     pub fn getMouseDelta(self: *const Input) [2]f32 {
         return self.mouse_delta;
     }
 
+    /// Whether mouse-look mode is enabled.
     pub fn isCursorDisabled(self: *const Input) bool {
         return self.cursor_disabled;
     }
 
+    /// Toggles mouse-look mode and OS cursor visibility.
+    /// Note: the hide/show calls are currently inverted relative to the flag.
     pub fn toggleCursor(self: *Input) void {
         if (self.cursor_disabled) {
             zsdl.hideCursor() catch {};
@@ -77,12 +100,17 @@ pub const Input = struct {
     }
 };
 
+/// Per-key/button state with edge detection.
 pub const InputState = packed struct {
+    /// Held during this frame.
     pressed: bool = false,
+    /// Transitioned from up to down this frame.
     just_pressed: bool = false,
+    /// Transitioned from down to up this frame.
     just_released: bool = false,
 };
 
+/// Emitted when a key is pressed or released.
 pub const KeyEvent = struct {
     key: zsdl.Scancode,
     kind: Kind,
@@ -90,6 +118,7 @@ pub const KeyEvent = struct {
     pub const Kind = enum { pressed, released };
 };
 
+/// Emitted when a mouse button is pressed or released.
 pub const MouseButtonEvent = struct {
     button: Mouse,
     kind: Kind,
@@ -97,11 +126,14 @@ pub const MouseButtonEvent = struct {
     pub const Kind = enum { pressed, released };
 };
 
+/// Emitted when the cursor moves.
 pub const MouseMotionEvent = struct {
     delta: [2]f32,
     position: [2]f32,
 };
 
+/// System: polls SDL, forwards events to the GUI backend, updates key/button
+/// states, and emits edge events plus a motion event when the cursor moved.
 pub const LoadInput = z.System(&z.Phase.First, struct {
     pub fn run(
         ecs: *z.Ecs,
@@ -189,6 +221,7 @@ pub const LoadInput = z.System(&z.Phase.First, struct {
     }
 });
 
+/// System: clears the input event streams at the end of the frame.
 pub const InputEventClearSystem = z.System(&z.Phase.Last, struct {
     pub fn run(
         key: z.Event(KeyEvent).Writer,
