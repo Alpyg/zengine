@@ -2,7 +2,7 @@ const std = @import("std");
 
 const zm = @import("zmath");
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const TransformModule = @This();
 

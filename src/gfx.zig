@@ -2,7 +2,7 @@ const std = @import("std");
 
 const zsdl = @import("zsdl");
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const GfxModule = @This();
 

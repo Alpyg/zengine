@@ -5,7 +5,7 @@ const zsdl = @import("zsdl");
 pub const Key = zsdl.Scancode;
 pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const InputModule = @This();
 

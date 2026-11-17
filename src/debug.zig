@@ -2,7 +2,7 @@ const std = @import("std");
 
 const zgui = @import("zgui");
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const DebugModule = @This();
 

@@ -2,7 +2,7 @@ const std = @import("std");
 
 const zsdl = @import("zsdl");
 
-const z = @import("../../root.zig");
+const z = @import("../root.zig");
 
 pub const ShaderSrc = struct {
     /// Compiled SPIR-V bytes for the vertex stage.

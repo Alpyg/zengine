@@ -5,9 +5,9 @@ const zm = @import("zmath");
 
 const z = @import("../root.zig");
 
-pub const Mesh = @import("render/mesh.zig").Mesh;
-pub const GpuMesh = @import("render/mesh.zig").GpuMesh;
-pub const Material = @import("render/material.zig").Material;
+pub const Mesh = z.Mesh;
+pub const GpuMesh = z.GpuMesh;
+pub const Material = z.Material;
 
 pub const RenderModule = @This();
 

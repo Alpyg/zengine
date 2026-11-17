@@ -4,7 +4,7 @@ const zflecs = @import("zflecs");
 const zsdl = @import("zsdl");
 const zgui = @import("zgui");
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const GuiModule = @This();
 

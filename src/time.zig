@@ -3,7 +3,7 @@ const std = @import("std");
 const zsdl = @import("zsdl");
 const zm = @import("zmath");
 
-const z = @import("../root.zig");
+const z = @import("root.zig");
 
 const TimeModule = @This();
 

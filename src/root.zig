@@ -7,7 +7,7 @@ pub const zmath = @import("zmath");
 pub const zstbi = @import("zstbi");
 
 // Ecs
-pub const Ecs = @import("core/Ecs.zig");
+pub const Ecs = @import("core/ecs.zig");
 pub const Assets = Ecs.Assets;
 pub const Event = Ecs.Event;
 pub const Parent = Ecs.Parent;
@@ -19,13 +19,13 @@ pub const With = Ecs.With;
 pub const Without = Ecs.Without;
 
 // Modules
-pub const CameraModule = @import("modules/Camera.zig");
-pub const DebugModule = @import("modules/Debug.zig");
-pub const GfxModule = @import("modules/Gfx.zig");
-pub const GuiModule = @import("modules/Gui.zig");
-pub const InputModule = @import("modules/Input.zig");
-pub const TimeModule = @import("modules/Time.zig");
-pub const TransformModule = @import("modules/Transform.zig");
+pub const CameraModule = @import("camera.zig");
+pub const DebugModule = @import("debug.zig");
+pub const GfxModule = @import("gfx.zig");
+pub const GuiModule = @import("gui.zig");
+pub const InputModule = @import("input.zig");
+pub const TimeModule = @import("time.zig");
+pub const TransformModule = @import("transform.zig");
 
 // Components and Resources
 pub const Camera = CameraModule.Camera;
@@ -36,15 +36,17 @@ pub const MainCamera = CameraModule.MainCamera;
 pub const Name = TransformModule.Name;
 pub const Time = TimeModule.Time;
 pub const Transform = TransformModule.Transform;
-pub const Material = @import("modules/render/material.zig").Material;
-pub const Mesh = @import("modules/render/mesh.zig").Mesh;
-pub const GpuMesh = @import("modules/render/mesh.zig").GpuMesh;
-pub const RenderModule = @import("modules/Render.zig").RenderModule;
-pub const MaterialPlugin = @import("modules/Render.zig").MaterialPlugin;
-pub const MeshRef = @import("modules/Render.zig").MeshRef;
-pub const MaterialRef = @import("modules/Render.zig").MaterialRef;
-pub const Renderer = @import("modules/Render.zig").Renderer;
-pub const RenderMeshes = @import("modules/Render.zig").RenderMeshes;
+
+const render = @import("render/render.zig");
+pub const Material = render.material.Material;
+pub const GpuMesh = render.mesh.GpuMesh;
+pub const Mesh = render.mesh.Mesh;
+pub const MaterialPlugin = render.render_module.MaterialPlugin;
+pub const MaterialRef = render.render_module.MaterialRef;
+pub const MeshRef = render.render_module.MeshRef;
+pub const RenderMeshes = render.render_module.RenderMeshes;
+pub const RenderModule = render.render_module.RenderModule;
+pub const Renderer = render.render_module.Renderer;
 
 test {
     _ = Ecs;
