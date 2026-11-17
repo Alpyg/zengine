@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zflecs = @import("zflecs");
 
@@ -15,8 +16,28 @@ pub const Without = @import("query.zig").Without;
 
 const Ecs = @This();
 
+var signal_exit_requested = std.atomic.Value(bool).init(false);
+
+fn handleSignal(_: std.posix.SIG) callconv(.c) void {
+    signal_exit_requested.store(true, .release);
+}
+
+fn installSignalHandlers() void {
+    if (comptime builtin.os.tag == .windows) return;
+
+    var action = std.posix.Sigaction{
+        .handler = .{ .handler = handleSignal },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+
+    std.posix.sigaction(std.posix.SIG.INT, &action, null);
+    std.posix.sigaction(std.posix.SIG.TERM, &action, null);
+}
+
 allocator: std.mem.Allocator = undefined,
 world: *zflecs.world_t = undefined,
+should_exit: bool = false,
 
 pub fn init(allocator: std.mem.Allocator) *Ecs {
     const self = allocator.create(Ecs) catch @panic("oom");
@@ -37,9 +58,15 @@ pub fn progress(self: *Ecs) void {
 }
 
 pub fn run(self: *Ecs) void {
-    while (true) {
+    installSignalHandlers();
+
+    while (!self.should_exit and !signal_exit_requested.load(.acquire)) {
         self.progress();
     }
+}
+
+pub fn quit(self: *Ecs) void {
+    self.should_exit = true;
 }
 
 pub fn new(self: *Ecs, name: [:0]const u8) zflecs.entity_t {

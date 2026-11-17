@@ -103,6 +103,7 @@ pub const MouseMotionEvent = struct {
 
 pub const LoadInput = z.System(&z.Phase.First, struct {
     pub fn run(
+        ecs: *z.Ecs,
         res_input: z.Resource(Input),
         key_writer: z.Event(KeyEvent).Writer,
         button_writer: z.Event(MouseButtonEvent).Writer,
@@ -113,6 +114,7 @@ pub const LoadInput = z.System(&z.Phase.First, struct {
         var event: zsdl.Event = undefined;
         while (zsdl.pollEvent(&event)) {
             switch (event.type) {
+                .quit => ecs.quit(),
                 else => {},
             }
         }
