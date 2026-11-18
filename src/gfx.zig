@@ -15,6 +15,8 @@ var window_name: [:0]const u8 = "ZEngine";
 
 /// Subphases inside `Phase.post_render`, chained in this order.
 pub const PostRenderPhase = enum {
+    pub const PHASE = .{ .parent = z.Phase.post_render };
+
     /// ImGui draw-data encoding into the swapchain.
     imgui,
     /// Command-buffer submission.
@@ -22,7 +24,7 @@ pub const PostRenderPhase = enum {
 };
 
 pub fn init(_: GfxModule, ecs: *z.Ecs) void {
-    _ = ecs.registerPhaseSet(z.Phase.post_render, PostRenderPhase);
+    _ = ecs.registerEcs(PostRenderPhase);
     _ = ecs.registerEcs(GfxModule);
 }
 

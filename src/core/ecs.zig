@@ -5,6 +5,8 @@
 //! - a type with `RESOURCE` is a singleton resource; `init(ecs)` is called once
 //! - a type with `COMPONENT` is a component, or a tag when it is zero-sized
 //! - a type with `phase` + `run` is a system (produced by `System(...)`)
+//! - a type with `PHASE` is a phase enum; `.{ .parent = Phase.x }` registers it
+//!   as a set under `x`, while `.{ }` registers a top-level phase chain
 //! - a type with `EVENT_QUEUE` comes from `Event(T)`
 //! - any other struct is treated as a namespace and its declarations are
 //!   registered recursively (non-systems first, then systems)
@@ -252,6 +254,16 @@ fn registerResourceType(self: *Ecs, comptime T: type) void {
 /// Namespace types are traversed in two passes so resources/components/events
 /// exist before any system argument tuple is initialized.
 pub fn registerEcs(self: *Ecs, T: type) *Ecs {
+    if (@hasDecl(T, "PHASE")) {
+        const options = T.PHASE;
+        if (@hasField(@TypeOf(options), "parent")) {
+            _ = self.registerPhaseSet(options.parent, T);
+        } else {
+            _ = self.registerPhases(T);
+        }
+        return self;
+    }
+
     if (isSystem(T)) {
         self.registerSystem(T);
         return self;

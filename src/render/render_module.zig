@@ -16,6 +16,8 @@ pub const GpuMesh = z.GpuMesh;
 
 /// Subphases inside `Phase.render`, chained in this order.
 pub const RenderPhase = enum {
+    pub const PHASE = .{ .parent = z.Phase.render };
+
     /// Opens the scene render pass.
     begin,
     /// Opaque geometry draws.
@@ -377,7 +379,7 @@ pub fn DrawMaterial(comptime M: type) type {
 /// the shared render systems. Must run before modules whose systems use
 /// `RenderPhase` (e.g. `CameraModule`).
 pub fn init(_: RenderModule, ecs: *z.Ecs) void {
-    _ = ecs.registerPhaseSet(z.Phase.render, RenderPhase);
+    _ = ecs.registerEcs(RenderPhase);
 
     if (!ecs.hasResource(z.Assets(Mesh)))
         _ = ecs.registerResource(z.Assets(Mesh).init(ecs.allocator));

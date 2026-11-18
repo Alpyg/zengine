@@ -30,7 +30,6 @@ test "phases and subphases run in order" {
             b,
         };
 
-    const Systems = struct {
         pub const First = z.System(z.Phase.first, struct {
             pub fn run(trace: z.Resource(*Trace)) void {
                 trace.push("first");
@@ -67,8 +66,6 @@ test "phases and subphases run in order" {
     ecs.progress();
 
     const trace = z.zflecs.singleton_get(ecs.world, Trace).?;
-    for (trace.items[0..trace.len]) |item| std.debug.print("{s} ", .{item});
-    std.debug.print("\n", .{});
     const expected = [_][]const u8{ "first", "update", "a", "b", "last" };
     try std.testing.expectEqualSlices([]const u8, &expected, trace.items[0..trace.len]);
 

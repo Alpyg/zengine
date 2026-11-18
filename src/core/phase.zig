@@ -1,10 +1,10 @@
 //! Frame phases and system sets.
 //!
-//! `Phase` is a plain enum of top-level pipeline phases, registered through
-//! `PhaseModule` (or directly with `Ecs.registerPhases(Phase)`). Both the default
-//! phases and custom sets registered with `Ecs.registerPhaseSet(phase, SetEnum)`
-//! are stored through the same `PhaseStorage` API; each value maps to a flecs
-//! phase entity, owned per world.
+//! `Phase` is a plain enum of top-level pipeline phases, auto-registered through
+//! its `PHASE` marker. Custom sets use the same marker with a parent:
+//! `pub const PHASE = .{ .parent = Phase.update };`. All phase enums are stored
+//! through the same `PhaseStorage` API; each value maps to a flecs phase entity,
+//! owned per world.
 
 const std = @import("std");
 
@@ -13,6 +13,8 @@ const zflecs = @import("zflecs");
 const Ecs = @import("ecs.zig");
 
 pub const Phase = enum(u8) {
+    pub const PHASE = .{};
+
     /// Input polling and asset setup.
     first,
     pre_update,
@@ -72,7 +74,7 @@ pub fn PhaseStorage(comptime S: type) type {
 /// Module: registers the default `Phase` enum in the world.
 pub const PhaseModule = struct {
     pub fn init(_: PhaseModule, ecs: *Ecs) void {
-        _ = ecs.registerPhases(Phase);
+        _ = ecs.registerEcs(Phase);
     }
 };
 
