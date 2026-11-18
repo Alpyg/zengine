@@ -5,17 +5,28 @@
 //! other parameter type with an `init(world)` method (resources, queries,
 //! event writers) is initialized once. The generated `run` simply forwards the
 //! stored tuple to the user function.
+//!
+//! The first argument is either a top-level `Phase` value or a custom set enum
+//! value registered through `Ecs.registerPhaseSet`.
 
 const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-pub fn System(phase: *zflecs.entity_t, comptime S: anytype) type {
+const phase_module = @import("phase.zig");
+
+pub fn System(stage_value: anytype, comptime S: anytype) type {
     const param_types = @typeInfo(@TypeOf(S.run)).@"fn".param_types;
 
     return struct {
         pub const Name = @typeName(S);
-        pub const Phase = phase;
+
+        /// The phase or custom set value this system belongs to.
+        pub const stage = stage_value;
+
+        pub fn stageEntity(ecs: anytype) zflecs.entity_t {
+            return phase_module.resolve(ecs, stage);
+        }
 
         const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
         var args_tuple: ArgsTupleType = undefined;

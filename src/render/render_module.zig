@@ -15,6 +15,18 @@ pub const Mesh = z.Mesh;
 pub const GpuMesh = z.GpuMesh;
 pub const Material = z.Material;
 
+/// Subphases inside `Phase.render`, chained in this order.
+pub const RenderPhase = enum {
+    /// Opens the scene render pass.
+    begin,
+    /// Opaque geometry draws.
+    render,
+    /// Blended draws.
+    transparent,
+    /// Closes the scene render pass.
+    end,
+};
+
 pub const RenderModule = @This();
 
 /// Component referring to a CPU mesh asset. The render module uploads it once
@@ -257,7 +269,7 @@ pub const Renderer = struct {
 };
 
 /// Uploads any mesh assets added to `Assets(Mesh)`.
-pub const UploadSetupMeshes = z.System(&z.Phase.PreRender, struct {
+pub const UploadSetupMeshes = z.System(z.Phase.pre_render, struct {
     pub fn run(
         r_gfx: z.Resource(z.Gfx),
         r_meshes: z.Resource(z.Assets(Mesh)),
@@ -284,7 +296,7 @@ pub const UploadSetupMeshes = z.System(&z.Phase.PreRender, struct {
 });
 
 /// System: opens the scene render pass into the offscreen target.
-pub const BeginScene = z.System(&z.Phase.RenderBegin, struct {
+pub const BeginScene = z.System(RenderPhase.begin, struct {
     pub fn run(
         r_gfx: z.Resource(z.Gfx),
         r_renderer: z.Resource(Renderer),
@@ -294,15 +306,16 @@ pub const BeginScene = z.System(&z.Phase.RenderBegin, struct {
 });
 
 /// System: closes the scene render pass.
-pub const EndScene = z.System(&z.Phase.RenderEnd, struct {
+pub const EndScene = z.System(RenderPhase.end, struct {
     pub fn run(r_renderer: z.Resource(Renderer)) void {
         r_renderer.getMut().end();
     }
 });
 
-/// Draws every entity that has a `MeshRef` and a `MaterialRef(M)`.
+/// Draws every entity that has a `MeshRef` and a `MaterialRef(M)`, in the
+/// `RenderPhase.render` subphase.
 pub fn DrawMaterial(comptime M: type) type {
-    return z.System(&z.Phase.Render, struct {
+    return z.System(RenderPhase.render, struct {
         pub fn run(
             r_gfx: z.Resource(z.Gfx),
             r_materials: z.Resource(z.Assets(M)),
@@ -365,9 +378,12 @@ pub fn DrawMaterial(comptime M: type) type {
     });
 }
 
-/// Registers the mesh/material/renderer resources and the shared render
-/// systems.
+/// Registers the mesh/material/renderer resources, the render subphases and
+/// the shared render systems. Must run before modules whose systems use
+/// `RenderPhase` (e.g. `CameraModule`).
 pub fn init(_: RenderModule, ecs: *z.Ecs) void {
+    _ = ecs.registerPhaseSet(z.Phase.render, RenderPhase);
+
     if (!ecs.hasResource(z.Assets(Mesh)))
         _ = ecs.registerResource(z.Assets(Mesh).init(ecs.allocator));
     if (!ecs.hasResource(RenderMeshes))

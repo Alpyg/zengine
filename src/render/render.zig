@@ -18,3 +18,4 @@ pub const MeshRef = render_module.MeshRef;
 pub const RenderMeshes = render_module.RenderMeshes;
 pub const RenderModule = render_module.RenderModule;
 pub const Renderer = render_module.Renderer;
+pub const RenderPhase = render_module.RenderPhase;

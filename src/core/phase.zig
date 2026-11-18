@@ -1,76 +1,94 @@
-//! Frame phases. Each phase is a flecs entity, chained with `DependsOn` so
-//! flecs runs systems in pipeline order. `Phase.init` must run before systems
-//! are registered.
+//! Frame phases and system sets.
+//!
+//! `Phase` is a plain enum of top-level pipeline stages, registered through
+//! `PhaseModule` (or directly with `Ecs.registerPhases(Phase)`). Both the default
+//! phases and custom sets registered with `Ecs.registerPhaseSet(phase, SetEnum)`
+//! are stored through the same `PhaseStorage` API; each value maps to a flecs
+//! phase entity, owned per world.
+
+const std = @import("std");
 
 const zflecs = @import("zflecs");
 
 const Ecs = @import("ecs.zig");
 
-/// Input polling and asset setup.
-pub var First: zflecs.entity_t = undefined;
+pub const Phase = enum(u8) {
+    /// Input polling and asset setup.
+    first,
+    pre_update,
+    /// Variable-timestep gameplay update.
+    update,
+    post_update,
+    /// Camera preparation and ImGui frame setup/UI submission.
+    pre_render,
+    /// Main render phase.
+    render,
+    /// Command-buffer submission.
+    post_render,
+    /// Cleanup: end-of-frame event queues and transient GPU resources.
+    last,
+};
 
-/// Start of the simulation phases.
-pub var PreUpdate: zflecs.entity_t = undefined;
+/// Per-world entity table for a stage enum (top-level `Phase` or a custom set).
+/// The caller fills the entities; `get` validates that the table was
+/// initialized for the `Ecs` being used.
+pub fn PhaseStorage(comptime S: type) type {
+    const count = @typeInfo(S).@"enum".field_names.len;
 
-/// Start of the fixed-timestep phases.
-pub var FixedFirst: zflecs.entity_t = undefined;
-pub var FixedPreUpdate: zflecs.entity_t = undefined;
-pub var FixedUpdate: zflecs.entity_t = undefined;
-pub var FixedPostUpdate: zflecs.entity_t = undefined;
-pub var FixedLast: zflecs.entity_t = undefined;
+    return struct {
+        pub var entities: [count]zflecs.entity_t = @splat(0);
+        pub var world_id: u64 = 0;
 
-/// Variable-timestep gameplay update.
-pub var Update: zflecs.entity_t = undefined;
-pub var PostUpdate: zflecs.entity_t = undefined;
+        fn indexOf(comptime value: S) usize {
+            inline for (std.meta.tags(S), 0..) |v, i| {
+                if (v == value) return i;
+            }
+            unreachable;
+        }
 
-/// GPU frame acquisition.
-pub var Acquire: zflecs.entity_t = undefined;
+        /// Marks the table as belonging to `ecs`. Entities are filled by the
+        /// caller.
+        pub fn begin(ecs: anytype) void {
+            world_id = ecs.id;
+        }
 
-/// Start of ImGui submission.
-pub var PreRender: zflecs.entity_t = undefined;
+        /// Stores the entity for `value`.
+        pub fn set(comptime value: S, stage_entity: zflecs.entity_t) void {
+            entities[indexOf(value)] = stage_entity;
+        }
 
-/// ImGui windows (dockspace, inspectors).
-pub var Ui: zflecs.entity_t = undefined;
+        /// Entity for `value`. Panics if the table was not initialized for this
+        /// world.
+        pub fn get(ecs: anytype, comptime value: S) zflecs.entity_t {
+            if (world_id != ecs.id) {
+                @panic("stage '" ++ @typeName(S) ++
+                    "' is not registered for this world; initialize it before use");
+            }
+            return entities[indexOf(value)];
+        }
+    };
+}
 
-/// ImGui windows that need render targets.
-pub var Viewport: zflecs.entity_t = undefined;
+/// Module: registers the default `Phase` enum in the world.
+pub const PhaseModule = struct {
+    pub fn init(_: PhaseModule, ecs: *Ecs) void {
+        _ = ecs.registerPhases(Phase);
+    }
+};
 
-/// Camera and render-target preparation.
-pub var PrepareScene: zflecs.entity_t = undefined;
+pub inline fn entity(ecs: anytype, comptime phase: Phase) zflecs.entity_t {
+    return PhaseStorage(Phase).get(ecs, phase);
+}
 
-/// Scene render pass begin.
-pub var RenderBegin: zflecs.entity_t = undefined;
+/// Next top-level phase, or null for `last`.
+pub fn next(phase: Phase) ?Phase {
+    const count = @typeInfo(Phase).@"enum".field_names.len;
+    const i = @backingInt(phase) + 1;
+    return if (i >= count) null else @fromBackingInt(@intCast(i));
+}
 
-/// Draw calls.
-pub var Render: zflecs.entity_t = undefined;
-
-/// Scene render pass end.
-pub var RenderEnd: zflecs.entity_t = undefined;
-
-/// ImGui rendering and swapchain presentation.
-pub var PostRender: zflecs.entity_t = undefined;
-
-/// Event cleanup and command-buffer submission.
-pub var Last: zflecs.entity_t = undefined;
-
-pub fn init(ecs: *Ecs) void {
-    _ = ecs.registerPhase(&First, null)
-        .registerPhase(&PreUpdate, First)
-        .registerPhase(&FixedFirst, PreUpdate)
-        .registerPhase(&FixedPreUpdate, FixedFirst)
-        .registerPhase(&FixedUpdate, FixedPreUpdate)
-        .registerPhase(&FixedPostUpdate, FixedUpdate)
-        .registerPhase(&FixedLast, FixedPostUpdate)
-        .registerPhase(&Update, FixedLast)
-        .registerPhase(&PostUpdate, Update)
-        .registerPhase(&Acquire, PostUpdate)
-        .registerPhase(&PreRender, Acquire)
-        .registerPhase(&Ui, PreRender)
-        .registerPhase(&Viewport, Ui)
-        .registerPhase(&PrepareScene, Viewport)
-        .registerPhase(&RenderBegin, PrepareScene)
-        .registerPhase(&Render, RenderBegin)
-        .registerPhase(&RenderEnd, Render)
-        .registerPhase(&PostRender, RenderEnd)
-        .registerPhase(&Last, PostRender);
+/// Resolves a top-level phase or a custom set value to its entity, using the
+/// same storage API for both.
+pub inline fn resolve(ecs: anytype, comptime stage: anytype) zflecs.entity_t {
+    return PhaseStorage(@TypeOf(stage)).get(ecs, stage);
 }

@@ -45,7 +45,7 @@ pub const Time = struct {
 };
 
 /// System: advances `Time` once per frame from SDL's clock.
-pub const UpdateTime = z.System(&z.Phase.First, struct {
+pub const UpdateTime = z.System(z.Phase.first, struct {
     pub fn run(r_time: z.Resource(Time)) void {
         var time = r_time.getMut();
 

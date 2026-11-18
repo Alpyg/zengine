@@ -107,9 +107,7 @@ pub fn Event(comptime T: type) type {
         };
 
         /// System: clears the queue at the end of the frame.
-        pub const EventClearSystem = z.System(struct {
-            pub const phase = &z.Phase.Last;
-
+        pub const EventClearSystem = z.System(z.Phase.last, struct {
             pub fn run(event: z.Event(T).Writer) void {
                 event.clear();
             }

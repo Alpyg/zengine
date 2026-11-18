@@ -1,5 +1,5 @@
 //! Keyboard and mouse polling. `LoadInput` samples SDL once per frame in
-//! `Phase.First` and publishes edge-triggered events that are cleared at the
+//! `Phase.first` and publishes edge-triggered events that are cleared at the
 //! end of the frame.
 
 const std = @import("std");
@@ -134,7 +134,7 @@ pub const MouseMotionEvent = struct {
 
 /// System: polls SDL, forwards events to the GUI backend, updates key/button
 /// states, and emits edge events plus a motion event when the cursor moved.
-pub const LoadInput = z.System(&z.Phase.First, struct {
+pub const LoadInput = z.System(z.Phase.first, struct {
     pub fn run(
         ecs: *z.Ecs,
         res_input: z.Resource(Input),
@@ -222,7 +222,7 @@ pub const LoadInput = z.System(&z.Phase.First, struct {
 });
 
 /// System: clears the input event streams at the end of the frame.
-pub const InputEventClearSystem = z.System(&z.Phase.Last, struct {
+pub const InputEventClearSystem = z.System(z.Phase.last, struct {
     pub fn run(
         key: z.Event(KeyEvent).Writer,
         button: z.Event(MouseButtonEvent).Writer,

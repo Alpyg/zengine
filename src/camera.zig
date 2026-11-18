@@ -63,7 +63,7 @@ pub const Camera = struct {
 
 /// System: updates every camera's matrices from its world transform and the
 /// current scene viewport aspect ratio.
-pub const UpdateCameraMatricesSystem = z.System(&z.Phase.PrepareScene, struct {
+pub const UpdateCameraMatricesSystem = z.System(z.Phase.pre_render, struct {
     pub fn run(
         r_renderer: z.Resource(z.Renderer),
         q_camera: z.Query(.{ z.Camera, z.GlobalTransform }, .{}),

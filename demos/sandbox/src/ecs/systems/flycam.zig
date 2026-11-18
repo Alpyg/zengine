@@ -11,7 +11,7 @@ pub const FlycamController = struct {
     sensitivity: f32 = 0.002,
 };
 
-pub const FlycamControls = z.System(&z.Phase.Update, struct {
+pub const FlycamControls = z.System(z.Phase.update, struct {
     pub fn run(
         r_input: z.Resource(z.Input),
         r_time: z.Resource(z.Time),
@@ -62,7 +62,7 @@ pub const FlycamControls = z.System(&z.Phase.Update, struct {
     }
 });
 
-pub const DebugMovementSystem = z.System(&z.Phase.Ui, struct {
+pub const DebugMovementSystem = z.System(z.Phase.pre_render, struct {
     pub fn run(
         q_flycam: z.Query(.{ z.Transform, z.GlobalTransform, FlycamController }, .{}),
     ) void {

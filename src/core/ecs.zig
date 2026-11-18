@@ -4,7 +4,7 @@
 //! Registration conventions:
 //! - a type with `RESOURCE` is a singleton resource; `init(ecs)` is called once
 //! - a type with `COMPONENT` is a component, or a tag when it is zero-sized
-//! - a type with `Phase` + `run` is a system (`System(...)` produces these)
+//! - a type with `stage` + `run` is a system (`System(...)` produces these)
 //! - a type with `EVENT_QUEUE` comes from `Event(T)`
 //! - any other struct is treated as a namespace and its declarations are
 //!   registered recursively (non-systems first, then systems)
@@ -15,10 +15,12 @@ const builtin = @import("builtin");
 const zflecs = @import("zflecs");
 
 const z = @import("../root.zig");
+const phase_module = @import("phase.zig");
 pub const Assets = @import("assets.zig").Assets;
 pub const Event = @import("event.zig").Event;
 pub const Parent = @import("query.zig").Parent;
-pub const Phase = @import("phase.zig");
+pub const Phase = phase_module.Phase;
+pub const PhaseModule = phase_module.PhaseModule;
 pub const Query = @import("query.zig").Query;
 pub const Resource = @import("resource.zig").Resource;
 pub const System = @import("system.zig").System;
@@ -26,6 +28,9 @@ pub const With = @import("query.zig").With;
 pub const Without = @import("query.zig").Without;
 
 const Ecs = @This();
+
+/// Monotonic world generation, used to invalidate per-world caches.
+var next_world_id = std.atomic.Value(u64).init(1);
 
 /// Set by the SIGINT/SIGTERM handler.
 var signal_exit_requested = std.atomic.Value(bool).init(false);
@@ -52,15 +57,23 @@ allocator: std.mem.Allocator = undefined,
 /// Underlying flecs world.
 world: *zflecs.world_t = undefined,
 
+/// Unique per-world generation. Caches (phases, sets) are rebuilt when it
+/// changes.
+id: u64 = 0,
+
 /// Set by `quit`; checked by `run`.
 should_exit: bool = false,
 
-/// Creates the world, initializes the phases and registers image loading.
+/// Creates the world and registers image loading. The default phases are
+/// registered by `z.PhaseModule`, which must be registered before systems.
 pub fn init(allocator: std.mem.Allocator) *Ecs {
     const self = allocator.create(Ecs) catch @panic("oom");
-    self.* = .{ .allocator = allocator, .world = zflecs.init() };
+    self.* = .{
+        .allocator = allocator,
+        .world = zflecs.init(),
+        .id = next_world_id.fetchAdd(1, .monotonic),
+    };
 
-    Phase.init(self);
     z.zstbi.init(allocator) catch @panic("shouldn't fail");
     return self;
 }
@@ -128,7 +141,7 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
 /// then systems, so system arguments can always resolve their dependencies.
 pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
+        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
         if (@hasDecl(T, "init")) T.init(self);
@@ -158,6 +171,13 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
         _ = zflecs.singleton_set(self.world, T, resource);
 
         std.log.debug("Registered resource `{s}`", .{@typeName(T)});
+        return self;
+    }
+
+    if (@hasDecl(T, "EVENT_QUEUE")) {
+        _ = self.registerEvent(T);
+        _ = self.registerSystems(T);
+        std.log.debug("Registered event `{s}`", .{@typeName(T)});
         return self;
     }
 
@@ -269,7 +289,7 @@ pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
 /// Registers every system found in the declarations of `T`.
 pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.Phase.*, T.run);
+        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
         if (@hasDecl(T, "init")) T.init(self);
@@ -297,8 +317,94 @@ pub fn registerPhase(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.en
     return self;
 }
 
+/// Registers every value of the phase enum `S` as a top-level flecs phase,
+/// chained in declaration order. Returns `self` for chaining.
+pub fn registerPhases(self: *Ecs, comptime S: type) *Ecs {
+    comptime {
+        if (@typeInfo(S) != .@"enum")
+            @compileError("registerPhases expects an enum type, got " ++ @typeName(S));
+    }
+
+    const Storage = phase_module.PhaseStorage(S);
+    Storage.begin(self);
+
+    var prev: ?zflecs.entity_t = null;
+    inline for (@typeInfo(S).@"enum".field_names) |name| {
+        const value = comptime @field(S, name);
+        var e: zflecs.entity_t = undefined;
+        _ = self.registerPhase(&e, prev);
+        Storage.set(value, e);
+        prev = e;
+    }
+
+    std.log.debug("Registered phases `{s}`", .{@typeName(S)});
+    return self;
+}
+
+/// Registers every value of the set enum `S` as a subphase of `phase`, chained
+/// in declaration order. Must be called before registering systems that use the
+/// set. Returns `self` for chaining.
+pub fn registerPhaseSet(self: *Ecs, comptime phase: Phase, comptime S: type) *Ecs {
+    comptime {
+        if (@typeInfo(S) != .@"enum")
+            @compileError("registerPhaseSet expects an enum type, got " ++ @typeName(S));
+    }
+
+    const Storage = phase_module.PhaseStorage(S);
+    Storage.begin(self);
+
+    const parent = phase_module.entity(self, phase);
+
+    // One phase entity per value, in declaration order.
+    inline for (@typeInfo(S).@"enum".field_names) |name| {
+        const value = comptime @field(S, name);
+        var e: zflecs.entity_t = undefined;
+        _ = self.registerPhase(&e, parent);
+        Storage.set(value, e);
+    }
+
+    const names = @typeInfo(S).@"enum".field_names;
+    if (names.len > 0) {
+        // Chain the values: first depends on the parent phase, each next on
+        // the previous value.
+        var prev = parent;
+        inline for (names) |name| {
+            const value = comptime @field(S, name);
+            const e = Storage.get(self, value);
+            zflecs.add_pair(self.world, e, zflecs.DependsOn, prev);
+            prev = e;
+        }
+
+        // Keep the chain inside the parent phase's slot.
+        const next_phase = comptime phase_module.next(phase);
+        if (next_phase) |np| {
+            zflecs.add_pair(self.world, phase_module.entity(self, np), zflecs.DependsOn, prev);
+        }
+    }
+
+    std.log.debug("Registered phase set `{s}`", .{@typeName(S)});
+    return self;
+}
+
+/// Enables or disables a top-level phase, an entire set enum, or a single set
+/// value. Disabling cascades to nested systems/phases through `DependsOn`.
+pub fn setStageEnabled(self: *Ecs, comptime stage: anytype, enabled: bool) void {
+    const T = @TypeOf(stage);
+    if (T == Phase) {
+        zflecs.enable(self.world, phase_module.entity(self, stage), enabled);
+    } else if (T == type) {
+        const Storage = phase_module.PhaseStorage(stage);
+        inline for (@typeInfo(stage).@"enum".field_names) |name| {
+            const value = comptime @field(stage, name);
+            zflecs.enable(self.world, Storage.get(self, value), enabled);
+        }
+    } else {
+        zflecs.enable(self.world, phase_module.resolve(self, stage), enabled);
+    }
+}
+
 inline fn isSystem(comptime T: type) bool {
-    return @hasDecl(T, "Phase") and @hasDecl(T, "run");
+    return @hasDecl(T, "stage") and @hasDecl(T, "run");
 }
 
 fn deinitSystems(comptime T: type) void {
@@ -333,7 +439,7 @@ test "ecs system" {
         };
 
         const Systems = struct {
-            pub const TestSystem = System(&Phase.Update, struct {
+            pub const TestSystem = System(Phase.update, struct {
                 pub fn run(
                     q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
                     q_counters: Query(.{ Components.Counter, Components.Counter2 }, .{Without(Components.Tag)}),
@@ -363,6 +469,7 @@ test "ecs system" {
     var ecs = Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
+    _ = ecs.registerModule(phase_module.PhaseModule{});
     _ = ecs.registerModule(Module{});
 
     const entity = ecs.new("Test Entity");
@@ -398,4 +505,36 @@ test "ecs system" {
     while (tag_it.next()) |tag| {
         try expect(tag.value == iterations * 2);
     }
+}
+
+test "registerPhaseSet chains values under a phase" {
+    var ecs = Ecs.init(std.testing.allocator);
+    defer ecs.deinit();
+
+    _ = ecs.registerModule(phase_module.PhaseModule{});
+
+    const Set = enum { a, b, c };
+    _ = ecs.registerPhaseSet(Phase.update, Set);
+
+    const a = phase_module.PhaseStorage(Set).get(ecs, .a);
+    const b = phase_module.PhaseStorage(Set).get(ecs, .b);
+    const c = phase_module.PhaseStorage(Set).get(ecs, .c);
+
+    try std.testing.expect(a != 0 and b != 0 and c != 0);
+    try std.testing.expect(zflecs.has_pair(ecs.world, a, zflecs.DependsOn, phase_module.entity(ecs, Phase.update)));
+    try std.testing.expect(zflecs.has_pair(ecs.world, b, zflecs.DependsOn, a));
+    try std.testing.expect(zflecs.has_pair(ecs.world, c, zflecs.DependsOn, b));
+
+    const next_phase = comptime phase_module.next(Phase.update).?;
+    try std.testing.expect(zflecs.has_pair(ecs.world, phase_module.entity(ecs, next_phase), zflecs.DependsOn, c));
+
+    const SetSystem = System(Set.b, struct {
+        pub fn run() void {}
+    });
+    try std.testing.expectEqual(b, SetSystem.stageEntity(ecs));
+
+    ecs.setStageEnabled(Phase.update, true);
+    ecs.setStageEnabled(Set, true);
+    ecs.setStageEnabled(Set.b, false);
+    ecs.setStageEnabled(Set.b, true);
 }

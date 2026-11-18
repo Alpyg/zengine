@@ -12,7 +12,8 @@ pub fn main(init: std.process.Init) !void {
     var app = z.Ecs.init(allocator);
     defer app.deinit();
 
-    _ = app.registerModule(z.GfxModule{})
+    _ = app.registerModule(z.PhaseModule{})
+        .registerModule(z.GfxModule{})
         .registerModule(z.TimeModule{})
         .registerModule(z.GuiModule{})
         .registerModule(z.InputModule{})
@@ -45,7 +46,7 @@ pub const TestMaterial = z.Material(
     StandardAttrs,
 );
 
-pub const Setup = z.System(&z.Phase.First, struct {
+pub const Setup = z.System(z.Phase.first, struct {
     var done: bool = false;
 
     pub fn run(

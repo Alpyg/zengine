@@ -1,6 +1,7 @@
 //! SDL3 GPU context: owns the device, window, swapchain and the per-frame
-//! command buffer. One command buffer is acquired in `Acquire` and submitted in
-//! `Last`; rendering systems draw in between.
+//! command buffer. One command buffer is acquired in `Phase.pre_render`, drawn into
+//! during `Phase.render`, submitted in `Phase.post_render` and cleaned up in
+//! `Phase.last`.
 
 const std = @import("std");
 
@@ -12,7 +13,16 @@ const GfxModule = @This();
 
 var window_name: [:0]const u8 = "ZEngine";
 
+/// Subphases inside `Phase.post_render`, chained in this order.
+pub const PostRenderPhase = enum {
+    /// ImGui draw-data encoding into the swapchain.
+    imgui,
+    /// Command-buffer submission.
+    submit,
+};
+
 pub fn init(_: GfxModule, ecs: *z.Ecs) void {
+    _ = ecs.registerPhaseSet(z.Phase.post_render, PostRenderPhase);
     _ = ecs.registerEcs(GfxModule);
 }
 
@@ -108,7 +118,7 @@ pub const Gfx = struct {
 
 /// System: acquires the frame's command buffer and swapchain texture. Skipped
 /// swapchain acquisition (e.g. minimized window) yields a zero-sized swapchain.
-pub const PreRender = z.System(&z.Phase.Acquire, struct {
+pub const PreRender = z.System(z.Phase.pre_render, struct {
     pub fn run(res_gfx: z.Resource(Gfx)) void {
         var gfx = res_gfx.getMut();
 
@@ -128,17 +138,24 @@ pub const PreRender = z.System(&z.Phase.Acquire, struct {
     }
 });
 
-/// System: submits the frame's command buffer, then releases deferred transfer
-/// buffers and clears per-frame state.
-pub const Render = z.System(&z.Phase.Last, struct {
+/// System: submits the frame's command buffer.
+pub const Render = z.System(PostRenderPhase.submit, struct {
     pub fn run(res_gfx: z.Resource(z.Gfx)) void {
-        var gfx = res_gfx.getMut();
+        const gfx = res_gfx.getMut();
 
         const cmd = gfx.cmd orelse return;
 
         _ = zsdl.submitGPUCommandBuffer(cmd) catch {
             std.debug.panic("Could not submit GPU Command Buffer: {s}", .{zsdl.getError().?});
         };
+    }
+});
+
+/// System: end-of-frame cleanup. Releases deferred transfer buffers and clears
+/// per-frame GPU state.
+pub const Cleanup = z.System(z.Phase.last, struct {
+    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
+        var gfx = res_gfx.getMut();
 
         gfx.releaseDeferredTransfers();
         gfx.cmd = null;

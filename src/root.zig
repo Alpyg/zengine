@@ -27,12 +27,14 @@ pub const DebugModule = @import("debug.zig");
 pub const GfxModule = @import("gfx.zig");
 pub const GuiModule = @import("gui.zig");
 pub const InputModule = @import("input.zig");
+pub const PhaseModule = Ecs.PhaseModule;
 pub const TimeModule = @import("time.zig");
 pub const TransformModule = @import("transform.zig");
 
 // Components and Resources
 pub const Camera = CameraModule.Camera;
 pub const Gfx = GfxModule.Gfx;
+pub const PostRenderPhase = GfxModule.PostRenderPhase;
 pub const GlobalTransform = TransformModule.GlobalTransform;
 pub const Input = InputModule.Input;
 pub const MainCamera = CameraModule.MainCamera;
@@ -49,6 +51,7 @@ pub const MaterialRef = render.render_module.MaterialRef;
 pub const MeshRef = render.render_module.MeshRef;
 pub const RenderMeshes = render.render_module.RenderMeshes;
 pub const RenderModule = render.render_module.RenderModule;
+pub const RenderPhase = render.render_module.RenderPhase;
 pub const Renderer = render.render_module.Renderer;
 
 test {

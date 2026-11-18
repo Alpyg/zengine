@@ -164,13 +164,13 @@ pub const Name = struct {
 /// System: recomputes each entity's `GlobalTransform` from its `Transform`
 /// and, when present, its parent's `GlobalTransform`.
 ///
-/// Runs in `Phase.PostUpdate`, after gameplay systems have updated local
+/// Runs in `Phase.post_update`, after gameplay systems have updated local
 /// transforms and before rendering reads world transforms. The parent is
 /// reached through zflecs' `ChildOf` cascade, so the value used is the parent's
 /// `GlobalTransform` as it exists at that point in the iteration; in deep
 /// hierarchies a parent that is visited after its children may only settle on
 /// the following frame.
-pub const PropagateParentTransform = z.System(&z.Phase.PostUpdate, struct {
+pub const PropagateParentTransform = z.System(z.Phase.post_update, struct {
     pub fn run(q: z.Query(.{ z.Transform, z.GlobalTransform, ?z.Parent(z.GlobalTransform) }, .{})) void {
         var it = q.iter();
         var i: usize = 0;
