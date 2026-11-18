@@ -38,10 +38,7 @@ pub const StandardAttrs = struct {
 };
 
 pub const TestMaterial = z.Material(
-    .{
-        .vertex = @embedFile("shaders/shader.vert.spv")[0..],
-        .fragment = @embedFile("shaders/shader.frag.spv")[0..],
-    },
+    z.shaders.shader,
     struct { object_to_clip: zm.Mat },
     StandardAttrs,
 );

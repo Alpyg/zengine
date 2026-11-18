@@ -3,9 +3,9 @@
     wayland
     vulkan-loader
     vulkan-headers
+    stdenv.cc.cc.lib
     libxkbcommon
     libX11
-    libGL
     sdl3
   ];
 in {
@@ -13,7 +13,7 @@ in {
     [
       pkg-config
       vulkan-tools
-      glslang
+      stdenv.cc
     ]
     ++ libs;
 
@@ -22,8 +22,6 @@ in {
     package = pkgs.zig;
   };
   env = {
-    C_INCLUDE_PATH = "${pkgs.libGL}/include";
-    CPLUS_INCLUDE_PATH = "${pkgs.libGL}/include";
-    VULKAN_SDK = "${pkgs.vulkan-headers}";
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
   };
 }

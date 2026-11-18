@@ -9,6 +9,9 @@ pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
 pub const zstbi = @import("zstbi");
 
+/// Compile-time embedded SPIR-V shaders
+pub const shaders = @import("shaders");
+
 // Ecs
 pub const Ecs = @import("core/ecs.zig");
 pub const Assets = Ecs.Assets;

@@ -1,6 +1,7 @@
-//! Material template: a graphics pipeline built from SPIR-V shaders plus the
-//! per-draw uniform values pushed to the GPU. Vertex layout and uniform block
-//! layout are derived from types at comptime.
+//! Material template: a graphics pipeline built from a compiled shader struct
+//! plus the per-draw uniform values pushed to the GPU. Vertex layout and
+//! uniform block layout are derived from types at comptime and validated
+//! against the shader's reflected layout.
 
 const std = @import("std");
 
@@ -8,48 +9,92 @@ const zsdl = @import("zsdl");
 
 const z = @import("../root.zig");
 
-/// Compiled shader pair and the entrypoint/uniform-buffer counts needed to
-/// create the pipeline stages.
-pub const ShaderSrc = struct {
-    /// Compiled SPIR-V bytes for the vertex stage.
-    vertex: []const u8,
-    /// Compiled SPIR-V bytes for the fragment stage.
-    fragment: []const u8,
-    /// Entry point names inside the SPIR-V modules.
-    vertex_entry: [:0]const u8 = "main",
-    fragment_entry: [:0]const u8 = "main",
-    /// Number of uniform buffers declared by each stage.
-    /// SDL3 SPIR-V conventions: vertex uniforms use set 1, fragment uniforms
-    /// use set 3. Push slots are indexed from zero.
-    vertex_uniform_buffers: u32 = 1,
-    fragment_uniform_buffers: u32 = 0,
-};
-
 /// A material: a graphics pipeline + the per-draw resources (uniforms) it pushes.
 ///
-/// - `src`: compiled shader bytes (SPIR-V)
-/// - `T`:   struct of uniforms pushed for each draw
-/// - `V`:   vertex layout *type* — a named struct whose fields carry
-///          `zsdl.GPUVertexElementFormat` as default values, e.g.
-///          `struct { position: [][3]f32, color: [][3]f32 }`.
-///          The GPU layout (pitch, offsets, locations) is derived from `V` at
-///          comptime, so `init` takes no layout argument.
-pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) type {
+/// - `S`: a compiled shader struct from the generated `shaders` module. It must
+///   expose `spv`, `vertex`, `fragment`, `uniform_block` and `bindings`, which
+///   the build-time Slang reflection generates.
+/// - `T`: struct of uniforms pushed for each draw. Validated against the
+///   reflected uniform block at comptime.
+/// - `V`: vertex layout *type* — a named struct whose fields carry
+///   `zsdl.GPUVertexElementFormat` as default values, e.g.
+///   `struct { position: [][3]f32, color: [][3]f32 }`.
+///   The GPU layout (pitch, offsets, locations) is derived from `V` at
+///   comptime, so `init` takes no layout argument.
+pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
     const uniforms_info = @typeInfo(T).@"struct";
     const attrs_info = @typeInfo(V).@"struct";
 
-    // --- comptime validation of the uniform struct (std140) ---
+    comptime {
+        if (!@hasDecl(S, "spv") or !@hasDecl(S, "vertex") or
+            !@hasDecl(S, "fragment") or !@hasDecl(S, "uniform_block"))
+        {
+            @compileError("Material expects a compiled shader struct from the generated `shaders` module");
+        }
+
+        if (S.vertex.num_uniform_buffers > 1 or S.fragment.num_uniform_buffers > 1) {
+            @compileError("Material supports at most one uniform buffer per stage (push slot 0)");
+        }
+
+        if (S.uniform_block.fields.len != uniforms_info.field_names.len) {
+            @compileError("Material uniform struct field count does not match the shader's reflected uniform block");
+        }
+    }
+
+    // --- comptime validation of the uniform struct against reflection ---
     comptime {
         var offset: u32 = 0;
-        for (uniforms_info.field_names, uniforms_info.field_types) |name, FT| {
+        for (uniforms_info.field_names, uniforms_info.field_types, 0..) |name, FT, i| {
+            const reflected = S.uniform_block.fields[i];
+
+            if (!std.mem.eql(u8, reflected.name, name)) {
+                @compileError("Material uniform field '" ++ name ++
+                    "' does not match shader reflection (expected '" ++ reflected.name ++ "')");
+            }
+
             const aligned = std.mem.alignForward(u32, offset, @alignOf(FT));
-            if (aligned != offset)
+            if (aligned != offset) {
                 @compileError("Material uniform field '" ++ name ++
                     "' is not naturally aligned in the uniform block");
+            }
+            if (reflected.offset != offset) {
+                @compileError("Material uniform field '" ++ name ++
+                    "' offset does not match shader reflection");
+            }
+            if (reflected.size != @sizeOf(FT)) {
+                @compileError("Material uniform field '" ++ name ++
+                    "' size does not match shader reflection");
+            }
+
+            validateFieldType(name, FT, reflected);
+
             offset += @sizeOf(FT);
         }
-        if (offset > 65536)
+
+        if (S.uniform_block.size != offset) {
+            @compileError("Material uniform struct size does not match the shader's reflected block size");
+        }
+        if (offset > 65536) {
             @compileError("Material uniform block exceeds 64 KiB");
+        }
+    }
+
+    comptime {
+        var uniform_buffers: u32 = 0;
+        for (S.bindings) |binding| {
+            if (std.mem.eql(u8, binding.category, "constant_buffer")) {
+                uniform_buffers += 1;
+                if (binding.binding != 0) {
+                    @compileError("Material uniform buffer must be at binding 0");
+                }
+                if (binding.set != 1 and binding.set != 3) {
+                    @compileError("Material uniform buffer must be in set 1 (vertex) or set 3 (fragment)");
+                }
+            }
+        }
+        if (uniform_buffers == 0 and S.uniform_block.fields.len != 0) {
+            @compileError("Material uniform block is not reflected as a shader binding");
+        }
     }
     comptime {
         const fmt_info = @typeInfo(@TypeOf(V.formats)).@"struct";
@@ -133,27 +178,27 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
         pub fn init(gfx: *z.Gfx, material: T) !Self {
             const vs = try zsdl.createGPUShader(gfx.device, &.{
                 .stage = .vertex,
-                .entrypoint = src.vertex_entry.ptr,
+                .entrypoint = "vertex",
                 .format = .{ .spirv = true },
-                .code_size = @intCast(src.vertex.len),
-                .code = @ptrCast(src.vertex.ptr),
-                .num_samplers = 0,
-                .num_storage_buffers = 0,
-                .num_storage_textures = 0,
-                .num_uniform_buffers = src.vertex_uniform_buffers,
+                .code_size = @intCast(S.spv.len),
+                .code = @ptrCast(S.spv.ptr),
+                .num_samplers = @max(S.vertex.num_textures, S.vertex.num_samplers),
+                .num_storage_buffers = S.vertex.num_storage_buffers,
+                .num_storage_textures = S.vertex.num_storage_textures,
+                .num_uniform_buffers = S.vertex.num_uniform_buffers,
             });
             errdefer zsdl.releaseGPUShader(gfx.device, vs);
 
             const fs = try zsdl.createGPUShader(gfx.device, &.{
                 .stage = .fragment,
-                .entrypoint = src.fragment_entry.ptr,
+                .entrypoint = "fragment",
                 .format = .{ .spirv = true },
-                .code_size = @intCast(src.fragment.len),
-                .code = @ptrCast(src.fragment.ptr),
-                .num_samplers = 0,
-                .num_storage_buffers = 0,
-                .num_storage_textures = 0,
-                .num_uniform_buffers = src.fragment_uniform_buffers,
+                .code_size = @intCast(S.spv.len),
+                .code = @ptrCast(S.spv.ptr),
+                .num_samplers = @max(S.fragment.num_textures, S.fragment.num_samplers),
+                .num_storage_buffers = S.fragment.num_storage_buffers,
+                .num_storage_textures = S.fragment.num_storage_textures,
+                .num_uniform_buffers = S.fragment.num_uniform_buffers,
             });
             errdefer zsdl.releaseGPUShader(gfx.device, fs);
 
@@ -243,19 +288,19 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
             zsdl.releaseGPUShader(self.device, self.vertex_shader);
         }
 
-        /// Push `self.uniforms` into the shader uniform slots.
+        /// Push `self.uniforms` into the uniform slots declared by the shader.
         /// `*const Self` so it can be called on a copy from the asset pool.
         pub fn flush(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {
             self.pushUniforms(cmd);
         }
 
-        /// Push `self.uniforms` into the vertex and (if used) fragment uniform
-        /// slots.
         pub fn pushUniforms(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {
             const bytes: *const anyopaque = @ptrCast(&self.uniforms);
             const len: u32 = @intCast(@sizeOf(T));
-            zsdl.pushGPUVertexUniformData(cmd, 0, bytes, len);
-            if (src.fragment_uniform_buffers > 0)
+
+            if (S.vertex.num_uniform_buffers > 0)
+                zsdl.pushGPUVertexUniformData(cmd, 0, bytes, len);
+            if (S.fragment.num_uniform_buffers > 0)
                 zsdl.pushGPUFragmentUniformData(cmd, 0, bytes, len);
         }
 
@@ -263,5 +308,70 @@ pub fn Material(comptime src: ShaderSrc, comptime T: type, comptime V: type) typ
         pub fn bind(self: *const Self, pass: *zsdl.GPURenderPass) void {
             zsdl.bindGPUGraphicsPipeline(pass, self.pipeline);
         }
+    };
+}
+
+/// Best-effort check that a Zig uniform field matches the reflected Slang type.
+fn validateFieldType(comptime name: []const u8, comptime FT: type, comptime reflected: anytype) void {
+    const info = @typeInfo(FT);
+
+    if (info == .array) {
+        const child = info.array.child;
+        if (@typeInfo(child) == .vector) {
+            const vec = @typeInfo(child).vector;
+            if (!std.mem.eql(u8, reflected.kind, "matrix")) {
+                @compileError("Material uniform field '" ++ name ++ "' is a matrix, but the shader reflects '" ++ reflected.kind ++ "'");
+            }
+            if (reflected.rows != info.array.len or reflected.columns != vec.len) {
+                @compileError("Material uniform field '" ++ name ++ "' matrix dimensions do not match shader reflection");
+            }
+            if (expectedScalarName(vec.child)) |scalar| {
+                if (!std.mem.eql(u8, reflected.scalar, scalar)) {
+                    @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
+                }
+            }
+            return;
+        }
+    }
+
+    if (info == .vector) {
+        if (!std.mem.eql(u8, reflected.kind, "vector")) {
+            @compileError("Material uniform field '" ++ name ++ "' is a vector, but the shader reflects '" ++ reflected.kind ++ "'");
+        }
+        if (expectedScalarName(info.vector.child)) |scalar| {
+            if (!std.mem.eql(u8, reflected.scalar, scalar)) {
+                @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
+            }
+        }
+        return;
+    }
+
+    if (expectedScalarName(FT)) |scalar| {
+        if (!std.mem.eql(u8, reflected.kind, "scalar")) {
+            @compileError("Material uniform field '" ++ name ++ "' is a scalar, but the shader reflects '" ++ reflected.kind ++ "'");
+        }
+        if (!std.mem.eql(u8, reflected.scalar, scalar)) {
+            @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
+        }
+    }
+}
+
+fn expectedScalarName(comptime T: type) ?[]const u8 {
+    return switch (@typeInfo(T)) {
+        .float => |f| switch (f.bits) {
+            16 => "float16",
+            32 => "float32",
+            64 => "float64",
+            else => null,
+        },
+        .int => |i| switch (i.bits) {
+            8 => if (i.signedness == .signed) "int8" else "uint8",
+            16 => if (i.signedness == .signed) "int16" else "uint16",
+            32 => if (i.signedness == .signed) "int32" else "uint32",
+            64 => if (i.signedness == .signed) "int64" else "uint64",
+            else => null,
+        },
+        .bool => "bool",
+        else => null,
     };
 }

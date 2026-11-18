@@ -41,12 +41,17 @@
             .hash = "N-V-__8AAK7XUQNKNRnv1J6i189jtURJKjp3HTftoyD4Y4CB",
             .lazy = true,
         },
+        .zslang = .{
+            .url = "git+https://github.com/zig-gamedev/zslang#b596cff7ac714c53832be5fa236e7e55aa5abca1",
+            .hash = "zslang-2026.14.0-dev-c7-3i8uIAQAoRc4Zp-WzdhZ4VCjTxMZGEDIMe67gTjXk",
+        },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
         "assets",
+        "tools",
         // For example...
         //"LICENSE",
         //"README.md",
