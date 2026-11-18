@@ -117,9 +117,7 @@ pub const Gfx = struct {
 /// System: acquires the frame's command buffer and swapchain texture. Skipped
 /// swapchain acquisition (e.g. minimized window) yields a zero-sized swapchain.
 pub const PreRender = z.System(z.Phase.pre_render, struct {
-    pub fn run(res_gfx: z.Resource(Gfx)) void {
-        var gfx = res_gfx.getMut();
-
+    pub fn run(gfx: z.Resource(*Gfx)) void {
         gfx.cmd = zsdl.acquireGPUCommandBuffer(gfx.device) catch {
             std.debug.panic("Could not acquire GPU Command Buffer: {s}", .{zsdl.getError().?});
         };
@@ -138,9 +136,7 @@ pub const PreRender = z.System(z.Phase.pre_render, struct {
 
 /// System: submits the frame's command buffer.
 pub const Render = z.System(PostRenderPhase.submit, struct {
-    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
-        const gfx = res_gfx.getMut();
-
+    pub fn run(gfx: z.Resource(z.Gfx)) void {
         const cmd = gfx.cmd orelse return;
 
         _ = zsdl.submitGPUCommandBuffer(cmd) catch {
@@ -152,9 +148,7 @@ pub const Render = z.System(PostRenderPhase.submit, struct {
 /// System: end-of-frame cleanup. Releases deferred transfer buffers and clears
 /// per-frame GPU state.
 pub const Cleanup = z.System(z.Phase.last, struct {
-    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
-        var gfx = res_gfx.getMut();
-
+    pub fn run(gfx: z.Resource(*z.Gfx)) void {
         gfx.releaseDeferredTransfers();
         gfx.cmd = null;
         gfx.swapchain_texture = null;

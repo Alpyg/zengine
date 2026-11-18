@@ -275,14 +275,10 @@ pub const Renderer = struct {
 /// Uploads any mesh assets added to `Assets(Mesh)`.
 pub const UploadSetupMeshes = z.System(z.Phase.pre_render, struct {
     pub fn run(
-        r_gfx: z.Resource(z.Gfx),
-        r_meshes: z.Resource(z.Assets(Mesh)),
-        r_render_meshes: z.Resource(RenderMeshes),
+        gfx: z.Resource(*z.Gfx),
+        meshes: z.Resource(*z.Assets(Mesh)),
+        render_meshes: z.Resource(*RenderMeshes),
     ) void {
-        const gfx = r_gfx.getMut();
-        const meshes = r_meshes.getMut();
-        const render_meshes = r_render_meshes.getMut();
-
         const cmd = gfx.cmd orelse return;
 
         while (meshes.popPending()) |handle| {
@@ -302,17 +298,17 @@ pub const UploadSetupMeshes = z.System(z.Phase.pre_render, struct {
 /// System: opens the scene render pass into the offscreen target.
 pub const BeginScene = z.System(RenderPhase.begin, struct {
     pub fn run(
-        r_gfx: z.Resource(z.Gfx),
-        r_renderer: z.Resource(Renderer),
+        gfx: z.Resource(*z.Gfx),
+        renderer: z.Resource(*Renderer),
     ) void {
-        _ = r_renderer.getMut().begin(r_gfx.getMut());
+        _ = renderer.begin(gfx);
     }
 });
 
 /// System: closes the scene render pass.
 pub const EndScene = z.System(RenderPhase.end, struct {
-    pub fn run(r_renderer: z.Resource(Renderer)) void {
-        r_renderer.getMut().end();
+    pub fn run(renderer: z.Resource(*Renderer)) void {
+        renderer.end();
     }
 });
 
@@ -321,31 +317,26 @@ pub const EndScene = z.System(RenderPhase.end, struct {
 pub fn DrawMaterial(comptime M: type) type {
     return z.System(RenderPhase.render, struct {
         pub fn run(
-            r_gfx: z.Resource(z.Gfx),
-            r_materials: z.Resource(z.Assets(M)),
-            r_render_meshes: z.Resource(RenderMeshes),
-            r_renderer: z.Resource(Renderer),
+            gfx: z.Resource(z.Gfx),
+            materials: z.Resource(*z.Assets(M)),
+            render_meshes: z.Resource(*RenderMeshes),
+            renderer: z.Resource(*Renderer),
             q_camera: z.Query(.{ z.Camera, z.GlobalTransform }, .{}),
             q: z.Query(.{ z.GlobalTransform, MeshRef, MaterialRef(M) }, .{}),
         ) void {
-            const gfx = r_gfx.get();
-            const materials = r_materials.getMut();
-            const render_meshes = r_render_meshes.getMut();
-            const renderer = r_renderer.getMut();
-
             const cmd = gfx.cmd orelse return;
             const pass = renderer.pass orelse return;
 
             var camera_it = q_camera.iter();
             defer camera_it.deinit();
             const camera_tuple = camera_it.next() orelse return;
-            const camera: *z.Camera = camera_tuple[0];
+            const camera: *const z.Camera = camera_tuple[0];
 
             var it = q.iter();
             while (it.next()) |obj| {
-                const transform: *z.GlobalTransform = obj[0];
-                const mesh_ref: *MeshRef = obj[1];
-                const material_ref: *MaterialRef(M) = obj[2];
+                const transform: *const z.GlobalTransform = obj[0];
+                const mesh_ref: *const MeshRef = obj[1];
+                const material_ref: *const MaterialRef(M) = obj[2];
 
                 const gpu_mesh = render_meshes.get(mesh_ref.handle) orelse continue;
 

@@ -46,9 +46,7 @@ pub const Time = struct {
 
 /// System: advances `Time` once per frame from SDL's clock.
 pub const UpdateTime = z.System(z.Phase.first, struct {
-    pub fn run(r_time: z.Resource(Time)) void {
-        var time = r_time.getMut();
-
+    pub fn run(time: z.Resource(*Time)) void {
         const now_ns = zsdl.getTicksNS();
         const now: f64 = @floatFromInt(now_ns);
         const prev = time.previous_time;

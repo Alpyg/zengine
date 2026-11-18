@@ -13,18 +13,15 @@ pub const FlycamController = struct {
 
 pub const FlycamControls = z.System(z.Phase.update, struct {
     pub fn run(
-        r_input: z.Resource(z.Input),
-        r_time: z.Resource(z.Time),
-        q_flycam: z.Query(.{ z.Transform, FlycamController }, .{}),
+        input: z.Resource(z.Input),
+        time: z.Resource(z.Time),
+        q_flycam: z.Query(.{ *z.Transform, FlycamController }, .{}),
     ) void {
-        const input = r_input.get();
-        const time = r_time.get();
-
         if (!input.isCursorDisabled()) return;
 
         var flycam_it = q_flycam.iter();
         defer flycam_it.deinit();
-        var transform: *z.Transform, const controller: *FlycamController = flycam_it.next() orelse return;
+        var transform: *z.Transform, const controller: *const FlycamController = flycam_it.next() orelse return;
 
         var forward = transform.forward();
         forward[1] = 0;
@@ -65,11 +62,11 @@ pub const FlycamControls = z.System(z.Phase.update, struct {
 
 pub const DebugMovementSystem = z.System(z.Phase.pre_render, struct {
     pub fn run(
-        q_flycam: z.Query(.{ z.Transform, z.GlobalTransform, FlycamController }, .{}),
+        q_flycam: z.Query(.{ *z.Transform, *z.GlobalTransform, *FlycamController }, .{}),
     ) void {
         var flycam_it = q_flycam.iter();
         defer flycam_it.deinit();
-        var transform: *z.Transform, const global: *z.GlobalTransform, const controller: *FlycamController = flycam_it.next() orelse return;
+        var transform: *z.Transform, var global: *z.GlobalTransform, var controller: *FlycamController = flycam_it.next() orelse return;
 
         if (!z.GuiModule.isFrameStarted()) return;
 
@@ -89,9 +86,11 @@ pub const DebugMovementSystem = z.System(z.Phase.pre_render, struct {
 
             var global_rotation_euler = zm.loadArr3(zm.quatToRollPitchYaw(global.rotation()));
 
-            _ = zgui.inputFloat4("G Position", .{ .v = @ptrCast(@constCast(&global.translation())) });
-            _ = zgui.inputFloat4("G Rotation", .{ .v = @ptrCast(@constCast(&global_rotation_euler)) });
-            _ = zgui.inputFloat4("G Scale", .{ .v = @ptrCast(@constCast(&global.scale())) });
+            var global_position = global.translation();
+            var global_scale = global.scale();
+            _ = zgui.inputFloat4("G Position", .{ .v = @ptrCast(&global_position) });
+            _ = zgui.inputFloat4("G Rotation", .{ .v = @ptrCast(&global_rotation_euler) });
+            _ = zgui.inputFloat4("G Scale", .{ .v = @ptrCast(&global_scale) });
         }
         zgui.end();
     }

@@ -54,9 +54,7 @@ pub fn deinit(_: *z.Ecs) void {
 /// System: starts an ImGui frame sized to the swapchain. No frame is started
 /// while the window is minimized (zero-sized swapchain).
 pub const PreRender = z.System(z.Phase.pre_render, struct {
-    pub fn run(r_gfx: z.Resource(z.Gfx)) void {
-        const gfx = r_gfx.get();
-
+    pub fn run(gfx: z.Resource(z.Gfx)) void {
         if (gfx.swapchain_w == 0 or gfx.swapchain_h == 0) {
             frame_started = false;
             return;
@@ -70,11 +68,9 @@ pub const PreRender = z.System(z.Phase.pre_render, struct {
 /// System: renders the ImGui draw data into the swapchain, clearing it to dark
 /// gray first.
 pub const Render = z.System(z.PostRenderPhase.imgui, struct {
-    pub fn run(res_gfx: z.Resource(z.Gfx)) void {
+    pub fn run(gfx: z.Resource(z.Gfx)) void {
         if (!frame_started) return;
         frame_started = false;
-
-        const gfx = res_gfx.getMut();
 
         const cmd = gfx.cmd orelse return;
 

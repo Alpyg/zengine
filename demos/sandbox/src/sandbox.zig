@@ -48,15 +48,11 @@ pub const Setup = z.System(z.Phase.first, struct {
 
     pub fn run(
         ecs: *z.Ecs,
-        r_gfx: z.Resource(z.Gfx),
-        r_materials: z.Resource(z.Assets(TestMaterial)),
-        r_meshes: z.Resource(z.Assets(z.Mesh)),
+        gfx: z.Resource(*z.Gfx),
+        materials: z.Resource(*z.Assets(TestMaterial)),
+        meshes: z.Resource(*z.Assets(z.Mesh)),
     ) void {
         if (done) return;
-
-        const gfx = r_gfx.getMut();
-        const materials = r_materials.getMut();
-        const meshes = r_meshes.getMut();
 
         const player = ecs.new("Player");
         _ = ecs.add(player, .{

@@ -18,12 +18,9 @@ pub fn init(_: DebugModule, ecs: *z.Ecs) void {
 /// hosting its own nested dockspace.
 pub const DebugRender = z.System(z.Phase.pre_render, struct {
     pub fn run(
-        res_gfx: z.Resource(z.Gfx),
-        res_input: z.Resource(z.Input),
+        gfx: z.Resource(z.Gfx),
+        input: z.Resource(*z.Input),
     ) void {
-        const gfx = res_gfx.get();
-        const input = res_input.getMut();
-
         if (!z.GuiModule.isFrameStarted()) return;
 
         if (input.getKey(.escape).just_pressed) {
@@ -74,13 +71,10 @@ pub const DebugRender = z.System(z.Phase.pre_render, struct {
 /// recreating the render target when the window size changes.
 pub const DebugUIViewportSystem = z.System(z.Phase.render, struct {
     pub fn run(
-        r_gfx: z.Resource(z.Gfx),
-        r_renderer: z.Resource(z.Renderer),
+        gfx: z.Resource(*z.Gfx),
+        renderer: z.Resource(*z.Renderer),
     ) void {
         if (!z.GuiModule.isFrameStarted()) return;
-
-        const gfx = r_gfx.getMut();
-        const renderer = r_renderer.getMut();
 
         if (zgui.begin("Viewport", .{})) {
             const avail = zgui.getContentRegionAvail();

@@ -171,11 +171,11 @@ pub const Name = struct {
 /// hierarchies a parent that is visited after its children may only settle on
 /// the following frame.
 pub const PropagateParentTransform = z.System(z.Phase.post_update, struct {
-    pub fn run(q: z.Query(.{ z.Transform, z.GlobalTransform, ?z.Parent(z.GlobalTransform) }, .{})) void {
+    pub fn run(q: z.Query(.{ z.Transform, *z.GlobalTransform, ?z.Parent(z.GlobalTransform) }, .{})) void {
         var it = q.iter();
         var i: usize = 0;
         while (it.next()) |transforms| : (i += 1) {
-            const transform: *z.Transform, var global: *z.GlobalTransform, const parent: ?*z.GlobalTransform = transforms;
+            const transform: *const z.Transform, var global: *z.GlobalTransform, const parent: ?*const z.GlobalTransform = transforms;
 
             if (parent) |p| {
                 global.transform = zm.mul(p.transform, transform.mat());

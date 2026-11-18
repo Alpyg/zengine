@@ -519,9 +519,9 @@ test "ecs system" {
         const Systems = struct {
             pub const TestSystem = System(Phase.update, struct {
                 pub fn run(
-                    q_counter: Query(.{Components.Counter}, .{Without(Components.Tag)}),
-                    q_counters: Query(.{ Components.Counter, Components.Counter2 }, .{Without(Components.Tag)}),
-                    q_counter_tag: Query(.{Components.Counter}, .{With(Components.Tag)}),
+                    q_counter: Query(.{*Components.Counter}, .{Without(Components.Tag)}),
+                    q_counters: Query(.{ *Components.Counter, *Components.Counter2 }, .{Without(Components.Tag)}),
+                    q_counter_tag: Query(.{*Components.Counter}, .{With(Components.Tag)}),
                 ) void {
                     var counter_it = q_counter.iter();
                     while (counter_it.next()) |counter| {
@@ -652,4 +652,58 @@ test "Ecs.deinit runs module, resource and event deinit" {
 
     try std.testing.expect(State.resource_deinited);
     try std.testing.expect(State.module_deinited);
+}
+
+test "query mutability follows pointer syntax" {
+    const A = struct {
+        pub const COMPONENT = {};
+        value: u32 = 0,
+    };
+    const B = struct {
+        pub const COMPONENT = {};
+        value: u32 = 0,
+    };
+
+    var ecs = Ecs.init(std.testing.allocator);
+    defer ecs.deinit();
+
+    _ = ecs.registerEcs(A);
+    _ = ecs.registerEcs(B);
+
+    const e1 = ecs.new("e1");
+    _ = ecs.add(e1, .{ A{}, B{} });
+    const e2 = ecs.new("e2");
+    _ = ecs.add(e2, B{});
+
+    var q = Query(.{ *A, B }, .{}).init(ecs.world);
+    defer q.deinit();
+    var it = q.iter();
+    while (it.next()) |row| {
+        const a: *A = row[0];
+        const b: *const B = row[1];
+        a.value += 1;
+        try std.testing.expectEqual(@as(u32, 0), b.value);
+    }
+
+    var q_optional = Query(.{ ?A, B }, .{}).init(ecs.world);
+    defer q_optional.deinit();
+    var optional_it = q_optional.iter();
+    while (optional_it.next()) |row| {
+        const a: ?*const A = row[0];
+        _ = row[1];
+        if (a) |value| {
+            try std.testing.expectEqual(@as(u32, 1), value.value);
+        } else {}
+    }
+}
+
+test "Resource resolves to const or mutable pointers" {
+    const TestRes = struct {
+        pub const RESOURCE = {};
+        value: u32 = 0,
+    };
+
+    try std.testing.expect(comptime Resource(TestRes) == *const TestRes);
+    try std.testing.expect(comptime Resource(*TestRes) == *TestRes);
+    try std.testing.expect(comptime Resource(*const TestRes) == *const TestRes);
 }

@@ -65,11 +65,9 @@ pub const Camera = struct {
 /// current scene viewport aspect ratio.
 pub const UpdateCameraMatricesSystem = z.System(z.Phase.pre_render, struct {
     pub fn run(
-        r_renderer: z.Resource(z.Renderer),
-        q_camera: z.Query(.{ z.Camera, z.GlobalTransform }, .{}),
+        renderer: z.Resource(z.Renderer),
+        q_camera: z.Query(.{ *z.Camera, z.GlobalTransform }, .{}),
     ) void {
-        const renderer = r_renderer.get();
-
         if (renderer.scene_w == 0 or renderer.scene_h == 0) return;
 
         const aspect_ratio =
@@ -78,7 +76,7 @@ pub const UpdateCameraMatricesSystem = z.System(z.Phase.pre_render, struct {
 
         var camera_it = q_camera.iter();
         while (camera_it.next()) |camera_tuple| {
-            var camera: *z.Camera, const transform: *z.GlobalTransform = camera_tuple;
+            var camera: *z.Camera, const transform: *const z.GlobalTransform = camera_tuple;
             camera.calculate_matrices(transform, aspect_ratio);
         }
     }

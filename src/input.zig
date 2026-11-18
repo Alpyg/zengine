@@ -129,13 +129,11 @@ pub const MouseMotionEvent = struct {
 pub const LoadInput = z.System(z.Phase.first, struct {
     pub fn run(
         ecs: *z.Ecs,
-        res_input: z.Resource(Input),
+        input: z.Resource(*Input),
         key_writer: z.Event(KeyEvent).Writer,
         button_writer: z.Event(MouseButtonEvent).Writer,
         motion_writer: z.Event(MouseMotionEvent).Writer,
     ) void {
-        var input = res_input.getMut();
-
         var event: zsdl.Event = undefined;
         while (zsdl.pollEvent(&event)) {
             _ = zgui.backend.processEvent(@ptrCast(&event));

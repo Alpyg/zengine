@@ -3,7 +3,11 @@
 //! `Query(Components, Filters)` describes which components to fetch and which
 //! filters to apply. Components listed directly are required; `?T` makes them
 //! optional. `Filters` accepts `With(T)`, `Without(T)` and `Parent(T)`.
-//! Iterating yields pointers (or optionals of pointers) into flecs' tables.
+//!
+//! A component expression controls mutability:
+//! - `Component`  yields `*const Component`
+//! - `*Component` yields `*Component`
+//! - `?Component` / `?*Component` behave the same way with an optional result.
 
 const std = @import("std");
 
@@ -21,13 +25,18 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
         @compileError("Expected at least one component in query");
     }
 
-    comptime var ComponentTypes: [components_info.field_names.len]type = undefined;
-    inline for (components_info.field_names, 0..) |component_name, i| {
-        const T = @field(Components, component_name);
+    const component_count = components_info.field_names.len;
+    comptime var ComponentTypes: [component_count]type = undefined;
+    comptime var Mutable: [component_count]bool = undefined;
+    comptime var Optional: [component_count]bool = undefined;
 
-        ComponentTypes[i] = parseQueryType(T);
+    inline for (components_info.field_names, 0..) |component_name, i| {
+        const field = parseQueryField(@field(Components, component_name));
+        ComponentTypes[i] = field.component;
+        Mutable[i] = field.mutable;
+        Optional[i] = field.optional;
     }
-    const Iter = QueryIter(ComponentTypes);
+    const Iter = QueryIter(ComponentTypes, Mutable, Optional);
 
     return struct {
         const Self = @This();
@@ -71,6 +80,35 @@ pub fn Query(comptime Components: anytype, comptime Filters: anytype) type {
     };
 }
 
+const QueryField = struct {
+    component: type,
+    mutable: bool,
+    optional: bool,
+};
+
+fn parseQueryField(comptime T: type) QueryField {
+    const info = @typeInfo(T);
+
+    const optional = info == .optional;
+    var c = if (optional) @typeInfo(T).optional.child else T;
+
+    while (@typeInfo(c) == .@"struct" and @hasDecl(c, "Inner")) {
+        c = c.Inner;
+    }
+
+    var mutable = false;
+    if (@typeInfo(c) == .pointer) {
+        const ptr = @typeInfo(c).pointer;
+        if (ptr.size != .one) {
+            @compileError("Expected a single-item pointer component, got " ++ @typeName(c));
+        }
+        mutable = !ptr.attrs.@"const";
+        c = ptr.child;
+    }
+
+    return .{ .component = c, .mutable = mutable, .optional = optional };
+}
+
 fn assertIsTuple(comptime T: type) void {
     const info = @typeInfo(T);
     if (info != .@"struct" or info.@"struct".is_tuple == false) {
@@ -83,36 +121,31 @@ fn assertImplsTerm(comptime T: type) void {
         @compileError("Filter does not implement term()");
 }
 
-fn parseQueryTypeTerm(comptime T: type) zflecs.term_t {
-    const info = @typeInfo(T);
-
-    const optional = info == .optional;
-    const C = if (optional) @typeInfo(T).optional.child else T;
-
-    var term = if (@hasDecl(C, "term")) C.term() else switch (@typeInfo(C)) {
-        .pointer => |p| zflecs.term_t{ .id = zflecs.id(p.child) },
-        .@"struct" => zflecs.term_t{ .id = zflecs.id(T) },
-        else => @compileError("Expected pointer, struct or pointer type"),
-    };
-
-    if (optional) term.oper = .Optional;
-
-    return term;
+fn unwrapOptional(comptime T: type) type {
+    return if (@typeInfo(T) == .optional) @typeInfo(T).optional.child else T;
 }
 
-fn parseQueryType(comptime C: type) type {
-    const info = @typeInfo(C);
+fn baseComponent(comptime T: type) type {
+    const info = @typeInfo(T);
+    if (info == .optional) return baseComponent(info.optional.child);
+    if (info == .pointer) return baseComponent(info.pointer.child);
+    if (info == .@"struct" and @hasDecl(T, "Inner")) return baseComponent(T.Inner);
+    return T;
+}
 
-    const optional = info == .optional;
-    var c = if (optional) @typeInfo(C).optional.child else C;
+fn parseQueryTypeTerm(comptime T: type) zflecs.term_t {
+    const field = parseQueryField(T);
+    const base = unwrapOptional(T);
 
-    c = if (@hasDecl(c, "Inner")) c.Inner else c;
+    var term = if (@typeInfo(base) == .@"struct" and @hasDecl(base, "term"))
+        base.term()
+    else
+        zflecs.term_t{ .id = zflecs.id(field.component) };
 
-    if (optional) {
-        return ?c;
-    } else {
-        return c;
-    }
+    term.inout = if (field.mutable or field.optional) .InOut else .In;
+    if (field.optional) term.oper = .Optional;
+
+    return term;
 }
 
 /// Filter: the entity must have component `C`.
@@ -121,7 +154,7 @@ pub fn With(comptime C: type) type {
         pub const Inner = C;
         pub fn term() zflecs.term_t {
             return zflecs.term_t{
-                .id = zflecs.id(C),
+                .id = zflecs.id(baseComponent(C)),
                 .inout = .In,
             };
         }
@@ -134,7 +167,7 @@ pub fn Without(comptime C: type) type {
         pub const Inner = C;
         pub fn term() zflecs.term_t {
             return zflecs.term_t{
-                .id = zflecs.id(C),
+                .id = zflecs.id(baseComponent(C)),
                 .inout = .InOutNone,
                 .oper = .Not,
             };
@@ -149,7 +182,7 @@ pub fn Parent(comptime C: type) type {
         pub const Inner = C;
         pub fn term() zflecs.term_t {
             return zflecs.term_t{
-                .id = zflecs.id(C),
+                .id = zflecs.id(baseComponent(C)),
                 .inout = .In,
                 .src = .{ .id = zflecs.Cascade },
                 .trav = zflecs.ChildOf,
@@ -160,31 +193,26 @@ pub fn Parent(comptime C: type) type {
 
 /// Iterator over the tables matched by a `Query`. `next` returns a pointer per
 /// component; with several components it returns a tuple of pointers.
-fn QueryIter(comptime QueryTypes: anytype) type {
-    comptime var TableTypes: [QueryTypes.len]type = undefined;
-    comptime var ComponentTypes: [QueryTypes.len]type = undefined;
+fn QueryIter(
+    comptime QueryTypes: anytype,
+    comptime Mutable: [QueryTypes.len]bool,
+    comptime Optional: [QueryTypes.len]bool,
+) type {
+    const component_count = QueryTypes.len;
+
+    comptime var TableTypes: [component_count]type = undefined;
+    comptime var PointerTypes: [component_count]type = undefined;
+
     inline for (QueryTypes, 0..) |T, i| {
-        switch (@typeInfo(T)) {
-            .pointer => |p| {
-                TableTypes[i] = []p.child;
-                ComponentTypes[i] = *p.child;
-            },
-            .@"struct" => {
-                TableTypes[i] = []T;
-                ComponentTypes[i] = *T;
-            },
-            .optional => |p| {
-                TableTypes[i] = ?[]p.child;
-                ComponentTypes[i] = ?*p.child;
-            },
-            else => @compileError("Expected struct, pointer or optional component"),
-        }
+        TableTypes[i] = if (Optional[i]) ?[]T else []T;
+        PointerTypes[i] = if (Optional[i])
+            (if (Mutable[i]) ?*T else ?*const T)
+        else
+            (if (Mutable[i]) *T else *const T);
     }
+
     const ComponentsTable = @Tuple(&TableTypes);
-    const Components = if (QueryTypes.len > 1)
-        @Tuple(&ComponentTypes)
-    else
-        *@typeInfo(TableTypes[0]).pointer.child;
+    const Components = if (component_count > 1) @Tuple(&PointerTypes) else PointerTypes[0];
 
     return struct {
         const Self = @This();
@@ -219,7 +247,7 @@ fn QueryIter(comptime QueryTypes: anytype) type {
         pub fn next(self: *Self) ?Components {
             if (self.finished) return null;
 
-            if (!self.started or self.index >= self.tables[0].len) {
+            if (!self.started or self.index >= self.firstTableLen()) {
                 if (!zflecs.query_next(&self.it)) {
                     self.deinit();
                     return null;
@@ -227,12 +255,7 @@ fn QueryIter(comptime QueryTypes: anytype) type {
                 self.index = 0;
 
                 inline for (QueryTypes, 0..) |T, i| {
-                    switch (@typeInfo(T)) {
-                        .pointer => |p| self.tables[i] = zflecs.field(&self.it, p.child, i) orelse &.{},
-                        .optional => |p| self.tables[i] = zflecs.field(&self.it, p.child, i) orelse &.{},
-                        .@"struct" => self.tables[i] = zflecs.field(&self.it, T, i) orelse &.{},
-                        else => @compileError("Expected struct, pointer or optional component"),
-                    }
+                    self.tables[i] = zflecs.field(&self.it, T, i) orelse &.{};
                 }
                 self.started = true;
             }
@@ -240,29 +263,39 @@ fn QueryIter(comptime QueryTypes: anytype) type {
             defer self.index += 1;
 
             var components: Components = undefined;
-            inline for (QueryTypes, 0..) |T, col| {
-                if (QueryTypes.len > 1) {
-                    switch (@typeInfo(T)) {
-                        .optional => {
-                            if (self.index < self.tables[col].?.len) {
-                                components[col] = &self.tables[col].?[self.index];
-                            } else {
-                                components[col] = null;
-                            }
-                        },
-                        .@"struct" => {
-                            if (self.index < self.tables[col].len) {
-                                components[col] = &self.tables[col][self.index];
-                            }
-                        },
-                        else => @compileError("Expected struct, pointer or optional component"),
-                    }
+
+            if (component_count == 1) {
+                if (comptime Optional[0]) {
+                    components = if (self.index < self.tables[0].?.len)
+                        &self.tables[0].?[self.index]
+                    else
+                        null;
                 } else {
-                    components = &self.tables[col][self.index];
+                    components = &self.tables[0][self.index];
+                }
+            } else {
+                inline for (QueryTypes, 0..) |_, col| {
+                    if (comptime Optional[col]) {
+                        components[col] = if (self.index < self.tables[col].?.len)
+                            &self.tables[col].?[self.index]
+                        else
+                            null;
+                    } else {
+                        components[col] = &self.tables[col][self.index];
+                    }
                 }
             }
 
             return components;
+        }
+
+        fn firstTableLen(self: *const Self) usize {
+            if (comptime Optional[0]) {
+                const table = self.tables[0] orelse return 0;
+                return table.len;
+            } else {
+                return self.tables[0].len;
+            }
         }
     };
 }

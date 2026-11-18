@@ -43,6 +43,21 @@ pub fn System(stage_value: anytype, comptime S: anytype) type {
                     args_tuple[i] = ecs;
                 } else if (pt == @TypeOf(ecs.world)) {
                     args_tuple[i] = ecs.world;
+                } else if (@typeInfo(pt) == .pointer) {
+                    const ptr = @typeInfo(pt).pointer;
+                    if (ptr.size != .one) {
+                        @compileError("System pointer argument `" ++ @typeName(pt) ++
+                            "` must be a single-item pointer");
+                    }
+                    if (@typeInfo(ptr.child) != .@"struct" or !@hasDecl(ptr.child, "RESOURCE")) {
+                        @compileError("System pointer argument `" ++ @typeName(pt) ++
+                            "` must point to a RESOURCE type (use z.Resource(...))");
+                    }
+
+                    args_tuple[i] = if (ptr.attrs.@"const")
+                        zflecs.singleton_get(ecs.world, ptr.child).?
+                    else
+                        zflecs.singleton_get_mut(ecs.world, ptr.child).?;
                 } else if (@typeInfo(pt) == .@"struct" and @hasDecl(pt, "init")) {
                     args_tuple[i] = pt.init(ecs.world);
                 }
