@@ -43,16 +43,9 @@ pub fn Assets(
             };
         }
 
-        /// Calls `deinit` on every live asset, if the type declares one.
+        /// Releases all live assets (zpool calls `deinit` on them, if defined)
+        /// and deinitializes the collection.
         pub fn deinit(self: *Self) void {
-            for (self.handles.items) |handle| {
-                if (self.pool.getColumnsIfLive(handle)) |value| {
-                    if (@hasDecl(T, "deinit")) {
-                        var owned = value;
-                        owned.deinit();
-                    }
-                }
-            }
             self.handles.deinit(self.allocator);
             self.pending.deinit(self.allocator);
             self.pool.deinit();

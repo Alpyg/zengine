@@ -26,21 +26,14 @@ pub const Input = struct {
 
     /// Latest state of every key seen so far.
     key_states: std.AutoHashMap(Key, InputState) = undefined,
-
     /// Latest state of every mouse button seen so far.
     mouse_states: std.AutoHashMap(Mouse, InputState) = undefined,
-
     /// True while mouse-look mode is enabled.
     cursor_disabled: bool = false,
-
     /// Cursor position in window coordinates at the end of the last frame.
     cursor_position: [2]f32 = undefined,
-
     /// Cursor movement since the previous frame.
     mouse_delta: [2]f32 = undefined,
-
-    /// Window used for cursor visibility operations.
-    gfx: *const z.Gfx = undefined,
 
     pub fn init(ecs: *z.Ecs) Input {
         _ = ecs.registerEvent(z.Event(KeyEvent))
@@ -52,7 +45,6 @@ pub const Input = struct {
             .mouse_states = std.AutoHashMap(Mouse, InputState).init(ecs.allocator),
             .cursor_position = .{ 0, 0 },
             .mouse_delta = .{ 0, 0 },
-            .gfx = zflecs.singleton_get(ecs.world, z.Gfx).?,
         };
     }
 

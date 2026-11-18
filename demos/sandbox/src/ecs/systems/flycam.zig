@@ -23,6 +23,7 @@ pub const FlycamControls = z.System(z.Phase.update, struct {
         if (!input.isCursorDisabled()) return;
 
         var flycam_it = q_flycam.iter();
+        defer flycam_it.deinit();
         var transform: *z.Transform, const controller: *FlycamController = flycam_it.next() orelse return;
 
         var forward = transform.forward();
@@ -67,6 +68,7 @@ pub const DebugMovementSystem = z.System(z.Phase.pre_render, struct {
         q_flycam: z.Query(.{ z.Transform, z.GlobalTransform, FlycamController }, .{}),
     ) void {
         var flycam_it = q_flycam.iter();
+        defer flycam_it.deinit();
         var transform: *z.Transform, const global: *z.GlobalTransform, const controller: *FlycamController = flycam_it.next() orelse return;
 
         if (!z.GuiModule.isFrameStarted()) return;

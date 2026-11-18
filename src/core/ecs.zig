@@ -64,6 +64,9 @@ id: u64 = 0,
 /// Set by `quit`; checked by `run`.
 should_exit: bool = false,
 
+/// Deinitializers, called in reverse registration order by `deinit`.
+deinit_fns: std.ArrayListUnmanaged(*const fn (*Ecs) void) = .empty,
+
 /// Creates the world and registers image loading. The default phases are
 /// registered by `z.PhaseModule`, which must be registered before systems.
 pub fn init(allocator: std.mem.Allocator) *Ecs {
@@ -78,10 +81,68 @@ pub fn init(allocator: std.mem.Allocator) *Ecs {
     return self;
 }
 
-/// Destroys the flecs world and the `Ecs` allocation.
+/// Runs registered deinitializers in reverse order, then destroys the flecs
+/// world and the `Ecs` allocation.
 pub fn deinit(self: *Ecs) void {
+    var i = self.deinit_fns.items.len;
+    while (i > 0) {
+        i -= 1;
+        self.deinit_fns.items[i](self);
+    }
+    self.deinit_fns.deinit(self.allocator);
+
+    z.zstbi.deinit();
     _ = zflecs.fini(self.world);
     self.allocator.destroy(self);
+}
+
+fn addDeinit(self: *Ecs, f: *const fn (*Ecs) void) void {
+    self.deinit_fns.append(self.allocator, f) catch @panic("oom");
+}
+
+fn systemDeinit(comptime T: type) *const fn (*Ecs) void {
+    return struct {
+        fn run(_: *Ecs) void {
+            deinitSystems(T);
+        }
+    }.run;
+}
+
+fn resourceDeinit(comptime T: type) *const fn (*Ecs) void {
+    return struct {
+        fn run(ecs: *Ecs) void {
+            if (comptime @hasDecl(T, "deinit")) {
+                const resource = zflecs.singleton_get_mut(ecs.world, T) orelse return;
+                const Fn = @TypeOf(T.deinit);
+
+                if (comptime Fn == fn (*T) void) {
+                    T.deinit(resource);
+                } else if (comptime Fn == fn (*T, *Ecs) void) {
+                    T.deinit(resource, ecs);
+                } else {
+                    @compileError("Resource `" ++ @typeName(T) ++
+                        "` deinit must be `fn (*Self) void` or `fn (*Self, *Ecs) void`");
+                }
+            }
+        }
+    }.run;
+}
+
+fn eventDeinit(comptime E: type) *const fn (*Ecs) void {
+    return struct {
+        fn run(ecs: *Ecs) void {
+            const event = zflecs.singleton_get_mut(ecs.world, E) orelse return;
+            event.deinit(ecs.allocator);
+        }
+    }.run;
+}
+
+fn moduleDeinit(comptime M: type) *const fn (*Ecs) void {
+    return struct {
+        fn run(ecs: *Ecs) void {
+            M.deinit(ecs);
+        }
+    }.run;
 }
 
 /// Runs one frame: all systems in phase order.
@@ -145,6 +206,7 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
         if (@hasDecl(T, "init")) T.init(self);
+        if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
         return self;
     }
 
@@ -169,6 +231,8 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
             T{};
 
         _ = zflecs.singleton_set(self.world, T, resource);
+
+        if (@hasDecl(T, "deinit")) self.addDeinit(resourceDeinit(T));
 
         std.log.debug("Registered resource `{s}`", .{@typeName(T)});
         return self;
@@ -209,7 +273,9 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     return self;
 }
 
-/// Instantiates a module and calls its `init(module, ecs)`.
+/// Instantiates a module and calls its `init(module, ecs)`. If the module
+/// declares `deinit(ecs: *Ecs)`, it is called from `Ecs.deinit` in reverse
+/// registration order.
 pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
     const ModuleType = @TypeOf(module);
 
@@ -219,13 +285,23 @@ pub fn registerModule(self: *Ecs, module: anytype) *Ecs {
         @compileError("Module should have an init method");
     }
 
+    if (@hasDecl(ModuleType, "deinit")) {
+        if (comptime @TypeOf(ModuleType.deinit) != fn (*Ecs) void) {
+            @compileError("Module `" ++ @typeName(ModuleType) ++
+                "` deinit must be `fn (*Ecs) void`");
+        }
+        self.addDeinit(moduleDeinit(ModuleType));
+    }
+
     return self;
 }
 
 /// Registers an `Event(T)` queue as a singleton.
 pub fn registerEvent(self: *Ecs, E: type) *Ecs {
     zflecs.COMPONENT(self.world, E);
+    if (zflecs.singleton_get(self.world, E) != null) return self;
     _ = zflecs.singleton_set(self.world, E, E.init(self));
+    self.addDeinit(eventDeinit(E));
 
     std.log.debug("Registered event `{s}`", .{@typeName(E)});
 
@@ -258,6 +334,7 @@ pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
 
     zflecs.COMPONENT(self.world, ResourceType);
     _ = zflecs.singleton_set(self.world, ResourceType, resource);
+    if (@hasDecl(ResourceType, "deinit")) self.addDeinit(resourceDeinit(ResourceType));
 
     return self;
 }
@@ -293,6 +370,7 @@ pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
         std.log.debug("Registered system `{s}`", .{@typeName(T)});
 
         if (@hasDecl(T, "init")) T.init(self);
+        if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
     } else {
         const decl_names = @typeInfo(T).@"struct".decl_names;
         inline for (decl_names) |decl_name| {
@@ -537,4 +615,41 @@ test "registerPhaseSet chains values under a phase" {
     ecs.setStageEnabled(Set, true);
     ecs.setStageEnabled(Set.b, false);
     ecs.setStageEnabled(Set.b, true);
+}
+
+test "Ecs.deinit runs module, resource and event deinit" {
+    const State = struct {
+        var resource_deinited: bool = false;
+        var module_deinited: bool = false;
+    };
+
+    const TestResource = struct {
+        value: u32 = 0,
+        pub const RESOURCE = {};
+        pub fn init(_: *Ecs) @This() {
+            return .{};
+        }
+        pub fn deinit(_: *@This()) void {
+            State.resource_deinited = true;
+        }
+    };
+
+    const Ev = Event(u32);
+
+    const Module = struct {
+        pub fn init(_: @This(), ecs: *Ecs) void {
+            _ = ecs.registerEcs(TestResource);
+            _ = ecs.registerEvent(Ev);
+        }
+        pub fn deinit(_: *Ecs) void {
+            State.module_deinited = true;
+        }
+    };
+
+    var ecs = Ecs.init(std.testing.allocator);
+    _ = ecs.registerModule(Module{});
+    ecs.deinit();
+
+    try std.testing.expect(State.resource_deinited);
+    try std.testing.expect(State.module_deinited);
 }

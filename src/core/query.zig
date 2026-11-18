@@ -193,10 +193,21 @@ fn QueryIter(comptime QueryTypes: anytype) type {
         index: usize = 0,
         tables: ComponentsTable = undefined,
         started: bool = false,
+        finished: bool = false,
 
         pub fn init(world: *zflecs.world_t, query: *zflecs.query_t) Self {
             const it = zflecs.query_iter(world, query);
             return Self{ .it = it };
+        }
+
+        /// Finalizes the underlying flecs iterator. Called automatically when
+        /// iteration is exhausted; call it manually if you break out early.
+        pub fn deinit(self: *Self) void {
+            if (self.finished) return;
+            // Trivial cached queries finalize themselves inside `query_next`
+            // and clear the query pointer.
+            if (@intFromPtr(self.it.query) != 0) zflecs.iter_fini(&self.it);
+            self.finished = true;
         }
 
         /// Number of entities in the current table.
@@ -206,9 +217,11 @@ fn QueryIter(comptime QueryTypes: anytype) type {
 
         /// Advances to the next entity, or null when all tables are exhausted.
         pub fn next(self: *Self) ?Components {
+            if (self.finished) return null;
+
             if (!self.started or self.index >= self.tables[0].len) {
                 if (!zflecs.query_next(&self.it)) {
-                    // zflecs.iter_fini(&self.it);
+                    self.deinit();
                     return null;
                 }
                 self.index = 0;

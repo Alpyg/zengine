@@ -55,11 +55,12 @@ pub const RenderMeshes = struct {
         return .{ .allocator = ecs.allocator };
     }
 
-    pub fn deinit(self: *RenderMeshes, device: *zsdl.GPUDevice) void {
+    pub fn deinit(self: *RenderMeshes, ecs: *z.Ecs) void {
+        const gfx: *const z.Gfx = z.zflecs.singleton_get(ecs.world, z.Gfx).?;
         var it = self.map.valueIterator();
         while (it.next()) |gpu| {
-            zsdl.releaseGPUBuffer(device, gpu.vertex_buffer);
-            zsdl.releaseGPUBuffer(device, gpu.index_buffer);
+            zsdl.releaseGPUBuffer(gfx.device, gpu.vertex_buffer);
+            zsdl.releaseGPUBuffer(gfx.device, gpu.index_buffer);
         }
         self.map.deinit(self.allocator);
     }
@@ -112,7 +113,10 @@ pub const Renderer = struct {
         };
     }
 
-    pub fn deinit(self: *Renderer, device: *zsdl.GPUDevice) void {
+    pub fn deinit(self: *Renderer, ecs: *z.Ecs) void {
+        const gfx: *const z.Gfx = z.zflecs.singleton_get(ecs.world, z.Gfx).?;
+        const device = gfx.device;
+
         if (self.scene_color) |texture| {
             zsdl.releaseGPUTexture(device, texture);
             self.scene_color = null;
@@ -333,6 +337,7 @@ pub fn DrawMaterial(comptime M: type) type {
             const pass = renderer.pass orelse return;
 
             var camera_it = q_camera.iter();
+            defer camera_it.deinit();
             const camera_tuple = camera_it.next() orelse return;
             const camera: *z.Camera = camera_tuple[0];
 

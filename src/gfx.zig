@@ -83,8 +83,6 @@ pub const Gfx = struct {
 
         self.swapchain_format = zsdl.getGPUSwapchainTextureFormat(self.device, self.window);
 
-        _ = ecs.registerResource(self);
-
         return self;
     }
 

@@ -35,6 +35,12 @@ pub fn Event(comptime T: type) type {
             };
         }
 
+        /// Frees the queue and its arena. Called by `Ecs.deinit`.
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
+            self.writer.arena.deinit();
+            allocator.destroy(self.writer.queue);
+        }
+
         /// Injected into systems to append events.
         pub const Writer = struct {
             impl: *WriterImpl,
