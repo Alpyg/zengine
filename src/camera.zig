@@ -13,11 +13,6 @@ pub fn init(_: CameraModule, ecs: *z.Ecs) void {
     _ = ecs.registerEcs(CameraModule);
 }
 
-/// Tag marking the entity used for rendering.
-pub const MainCamera = struct {
-    pub const COMPONENT = {};
-};
-
 /// Component: perspective camera parameters and derived matrices.
 pub const Camera = struct {
     pub const COMPONENT = {};

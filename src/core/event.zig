@@ -63,10 +63,6 @@ pub fn Event(comptime T: type) type {
             queue: *Queue,
             arena: std.heap.ArenaAllocator,
 
-            pub inline fn init(world: *zflecs.world_t) WriterImpl {
-                return zflecs.singleton_get_mut(world, Self).?.writer;
-            }
-
             pub inline fn send(self: *WriterImpl, value: T) !void {
                 var allocator = self.arena.allocator();
                 const item = try allocator.create(Item);

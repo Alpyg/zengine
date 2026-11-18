@@ -1,8 +1,6 @@
 //! Editor UI: a fullscreen dockspace with `Main` and `Tool` tabs, plus the
 //! `Viewport` window that displays the offscreen scene texture.
 
-const std = @import("std");
-
 const zgui = @import("zgui");
 
 const z = @import("root.zig");

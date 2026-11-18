@@ -103,7 +103,7 @@ fn addDeinit(self: *Ecs, f: *const fn (*Ecs) void) void {
 fn systemDeinit(comptime T: type) *const fn (*Ecs) void {
     return struct {
         fn run(_: *Ecs) void {
-            deinitSystems(T);
+            T.deinit();
         }
     }.run;
 }
@@ -197,57 +197,66 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
     }
 }
 
-/// Registers `T` according to the conventions listed above. For namespaces,
-/// all nested declarations are registered: resources/components/events first,
-/// then systems, so system arguments can always resolve their dependencies.
+/// Adds one system to the world and initializes its argument tuple.
+fn registerSystem(self: *Ecs, comptime T: type) void {
+    _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
+
+    if (@hasDecl(T, "init")) T.init(self);
+    if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
+
+    std.log.debug("Registered system `{s}`", .{@typeName(T)});
+}
+
+/// Registers `T` as a component, or as a tag when it is zero-sized.
+fn registerComponentType(self: *Ecs, comptime T: type) void {
+    if (@sizeOf(T) > 0) {
+        zflecs.COMPONENT(self.world, T);
+        std.log.debug("Registered component `{s}`", .{@typeName(T)});
+    } else {
+        zflecs.TAG(self.world, T);
+        std.log.debug("Registered tag `{s}`", .{@typeName(T)});
+    }
+}
+
+/// Stores a singleton resource and registers its deinitializer.
+fn setResource(self: *Ecs, comptime T: type, value: T) void {
+    zflecs.COMPONENT(self.world, T);
+    _ = zflecs.singleton_set(self.world, T, value);
+    if (@hasDecl(T, "deinit")) self.addDeinit(resourceDeinit(T));
+
+    std.log.debug("Registered resource `{s}`", .{@typeName(T)});
+}
+
+/// Creates the resource value (via `init(ecs)` when available) and stores it.
+fn registerResourceType(self: *Ecs, comptime T: type) void {
+    if (self.hasResource(T)) return;
+
+    const value = if (@hasDecl(T, "init")) T.init(self) else T{};
+    self.setResource(T, value);
+}
+
+/// Registers `T` using the conventions documented at the top of this file.
+/// Namespace types are traversed in two passes so resources/components/events
+/// exist before any system argument tuple is initialized.
 pub fn registerEcs(self: *Ecs, T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
-        std.log.debug("Registered system `{s}`", .{@typeName(T)});
-
-        if (@hasDecl(T, "init")) T.init(self);
-        if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
+        self.registerSystem(T);
         return self;
     }
 
     if (@hasDecl(T, "COMPONENT")) {
-        if (@sizeOf(T) > 0) {
-            zflecs.COMPONENT(self.world, T);
-            std.log.debug("Registered component `{s}`", .{@typeName(T)});
-        } else {
-            zflecs.TAG(self.world, T);
-            std.log.debug("Registered tag `{s}`", .{@typeName(T)});
-        }
+        self.registerComponentType(T);
         return self;
     }
 
     if (@hasDecl(T, "RESOURCE")) {
-        zflecs.COMPONENT(self.world, T);
-        if (zflecs.singleton_get(self.world, T) != null) return self;
-
-        const resource = if (@hasDecl(T, "init"))
-            T.init(self)
-        else
-            T{};
-
-        _ = zflecs.singleton_set(self.world, T, resource);
-
-        if (@hasDecl(T, "deinit")) self.addDeinit(resourceDeinit(T));
-
-        std.log.debug("Registered resource `{s}`", .{@typeName(T)});
+        self.registerResourceType(T);
         return self;
     }
 
     if (@hasDecl(T, "EVENT_QUEUE")) {
         _ = self.registerEvent(T);
-        _ = self.registerSystems(T);
-        std.log.debug("Registered event `{s}`", .{@typeName(T)});
-        return self;
-    }
-
-    if (@hasDecl(T, "EVENT")) {
-        _ = self.registerEvent(z.Event(T));
-        std.log.debug("Registered event `{s}`", .{@typeName(T)});
+        if (@hasDecl(T, "EventClearSystem")) _ = self.registerEcs(T.EventClearSystem);
         return self;
     }
 
@@ -255,8 +264,7 @@ pub fn registerEcs(self: *Ecs, T: type) *Ecs {
 
     const decl_names = @typeInfo(T).@"struct".decl_names;
 
-    // First pass: components, resources and events. This guarantees that all
-    // resources exist before any system's argument tuple is initialized.
+    // First pass: non-systems.
     inline for (decl_names) |decl_name| {
         const Child = @field(T, decl_name);
         if (@TypeOf(Child) != type) continue;
@@ -329,12 +337,9 @@ pub fn registerResource(self: *Ecs, resource: anytype) *Ecs {
         );
     }
 
-    if (zflecs.id(ResourceType) != 0 and zflecs.singleton_get(self.world, ResourceType) != null)
-        return self;
+    if (self.hasResource(ResourceType)) return self;
 
-    zflecs.COMPONENT(self.world, ResourceType);
-    _ = zflecs.singleton_set(self.world, ResourceType, resource);
-    if (@hasDecl(ResourceType, "deinit")) self.addDeinit(resourceDeinit(ResourceType));
+    self.setResource(ResourceType, resource);
 
     return self;
 }
@@ -346,18 +351,9 @@ pub fn hasResource(self: *Ecs, comptime T: type) bool {
 
 /// Registers every type declaration of `T` as a component or tag.
 pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
-    const decl_names = @typeInfo(T).@"struct".decl_names;
-    inline for (decl_names) |decl_name| {
+    inline for (@typeInfo(T).@"struct".decl_names) |decl_name| {
         const Child = @field(T, decl_name);
-        if (@TypeOf(Child) == type) {
-            if (@sizeOf(Child) > 0) {
-                zflecs.COMPONENT(self.world, Child);
-                std.log.debug("Registered component `{s}`", .{decl_name});
-            } else {
-                zflecs.TAG(self.world, Child);
-                std.log.debug("Registered tag `{s}`", .{decl_name});
-            }
-        }
+        if (@TypeOf(Child) == type) self.registerComponentType(Child);
     }
 
     return self;
@@ -366,19 +362,16 @@ pub fn registerComponents(self: *Ecs, comptime T: type) *Ecs {
 /// Registers every system found in the declarations of `T`.
 pub fn registerSystems(self: *Ecs, comptime T: type) *Ecs {
     if (isSystem(T)) {
-        _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
-        std.log.debug("Registered system `{s}`", .{@typeName(T)});
+        self.registerSystem(T);
+        return self;
+    }
 
-        if (@hasDecl(T, "init")) T.init(self);
-        if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
-    } else {
-        const decl_names = @typeInfo(T).@"struct".decl_names;
-        inline for (decl_names) |decl_name| {
-            const Child = @field(T, decl_name);
-            if (@TypeOf(Child) != type) continue;
+    if (@typeInfo(T) != .@"struct") return self;
 
-            _ = registerSystems(self, Child);
-        }
+    inline for (@typeInfo(T).@"struct".decl_names) |decl_name| {
+        const Child = @field(T, decl_name);
+        if (@TypeOf(Child) != type) continue;
+        _ = self.registerSystems(Child);
     }
 
     return self;
@@ -395,18 +388,13 @@ pub fn registerPhase(self: *Ecs, phase: *zflecs.entity_t, depends_on: ?zflecs.en
     return self;
 }
 
-/// Registers every value of the phase enum `S` as a top-level flecs phase,
-/// chained in declaration order. Returns `self` for chaining.
-pub fn registerPhases(self: *Ecs, comptime S: type) *Ecs {
-    comptime {
-        if (@typeInfo(S) != .@"enum")
-            @compileError("registerPhases expects an enum type, got " ++ @typeName(S));
-    }
-
+/// Creates one phase entity per enum value, chained after `parent` when given.
+/// Returns the last entity in the chain, or `parent` when the enum is empty.
+fn registerPhaseChain(self: *Ecs, comptime S: type, parent: ?zflecs.entity_t) ?zflecs.entity_t {
     const Storage = phase_module.PhaseStorage(S);
     Storage.begin(self);
 
-    var prev: ?zflecs.entity_t = null;
+    var prev = parent;
     inline for (@typeInfo(S).@"enum".field_names) |name| {
         const value = comptime @field(S, name);
         var e: zflecs.entity_t = undefined;
@@ -414,6 +402,16 @@ pub fn registerPhases(self: *Ecs, comptime S: type) *Ecs {
         Storage.set(value, e);
         prev = e;
     }
+
+    return prev;
+}
+
+/// Registers every value of the phase enum `S` as a top-level flecs phase,
+/// chained in declaration order. Returns `self` for chaining.
+pub fn registerPhases(self: *Ecs, comptime S: type) *Ecs {
+    comptime assertEnum(S, "registerPhases");
+
+    _ = self.registerPhaseChain(S, null);
 
     std.log.debug("Registered phases `{s}`", .{@typeName(S)});
     return self;
@@ -423,45 +421,26 @@ pub fn registerPhases(self: *Ecs, comptime S: type) *Ecs {
 /// in declaration order. Must be called before registering systems that use the
 /// set. Returns `self` for chaining.
 pub fn registerPhaseSet(self: *Ecs, comptime phase: Phase, comptime S: type) *Ecs {
-    comptime {
-        if (@typeInfo(S) != .@"enum")
-            @compileError("registerPhaseSet expects an enum type, got " ++ @typeName(S));
-    }
-
-    const Storage = phase_module.PhaseStorage(S);
-    Storage.begin(self);
+    comptime assertEnum(S, "registerPhaseSet");
 
     const parent = phase_module.entity(self, phase);
+    const last = self.registerPhaseChain(S, parent);
 
-    // One phase entity per value, in declaration order.
-    inline for (@typeInfo(S).@"enum".field_names) |name| {
-        const value = comptime @field(S, name);
-        var e: zflecs.entity_t = undefined;
-        _ = self.registerPhase(&e, parent);
-        Storage.set(value, e);
-    }
-
-    const names = @typeInfo(S).@"enum".field_names;
-    if (names.len > 0) {
-        // Chain the values: first depends on the parent phase, each next on
-        // the previous value.
-        var prev = parent;
-        inline for (names) |name| {
-            const value = comptime @field(S, name);
-            const e = Storage.get(self, value);
-            zflecs.add_pair(self.world, e, zflecs.DependsOn, prev);
-            prev = e;
-        }
-
-        // Keep the chain inside the parent phase's slot.
-        const next_phase = comptime phase_module.next(phase);
-        if (next_phase) |np| {
-            zflecs.add_pair(self.world, phase_module.entity(self, np), zflecs.DependsOn, prev);
+    // Keep the set inside the parent phase's slot.
+    if (last) |last_entity| {
+        if (comptime phase_module.next(phase)) |next_phase| {
+            zflecs.add_pair(self.world, phase_module.entity(self, next_phase), zflecs.DependsOn, last_entity);
         }
     }
 
     std.log.debug("Registered phase set `{s}`", .{@typeName(S)});
     return self;
+}
+
+fn assertEnum(comptime S: type, comptime caller: []const u8) void {
+    if (@typeInfo(S) != .@"enum") {
+        @compileError(caller ++ " expects an enum type, got " ++ @typeName(S));
+    }
 }
 
 /// Enables or disables a top-level phase, an entire set enum, or a single set
@@ -483,20 +462,6 @@ pub fn setStageEnabled(self: *Ecs, comptime stage: anytype, enabled: bool) void 
 
 inline fn isSystem(comptime T: type) bool {
     return @hasDecl(T, "stage") and @hasDecl(T, "run");
-}
-
-fn deinitSystems(comptime T: type) void {
-    if (isSystem(T)) {
-        if (@hasDecl(T, "deinit")) T.deinit();
-    } else {
-        const decl_names = @typeInfo(T).@"struct".decl_names;
-        inline for (decl_names) |decl_name| {
-            const Child = @field(T, decl_name);
-            if (@TypeOf(Child) != type) continue;
-
-            deinitSystems(Child);
-        }
-    }
 }
 
 test "ecs system" {

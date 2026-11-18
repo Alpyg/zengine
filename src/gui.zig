@@ -4,8 +4,6 @@
 //! systems submit widgets, and `Render` draws the accumulated geometry into the
 //! swapchain.
 
-const std = @import("std");
-
 const zflecs = @import("zflecs");
 const zsdl = @import("zsdl");
 const zgui = @import("zgui");

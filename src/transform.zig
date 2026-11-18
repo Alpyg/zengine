@@ -10,8 +10,6 @@
 //! engine uses a right-handed basis where -Z is forward, +X is right and +Y is
 //! up.
 
-const std = @import("std");
-
 const zm = @import("zmath");
 
 const z = @import("root.zig");

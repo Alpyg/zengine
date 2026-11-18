@@ -48,9 +48,6 @@ pub const Gfx = struct {
     /// the command buffer that references them has been submitted.
     deferred_transfer_buffers: std.ArrayListUnmanaged(*zsdl.GPUTransferBuffer) = .empty,
 
-    /// Reserved debug flag; currently unused.
-    debug: bool = false,
-
     allocator: std.mem.Allocator = undefined,
 
     /// Initializes SDL, creates the GPU device and window, claims the window

@@ -24,11 +24,6 @@ pub fn Assets(
 
         pool: Pool,
 
-        /// Handles that have been added and not removed yet. zpool does not
-        /// expose iteration, so the asset collection keeps its own list for
-        /// cleanup and for subsystems that need to walk all assets.
-        handles: std.ArrayListUnmanaged(Handle) = .empty,
-
         /// Assets added since the last time a consumer drained the queue.
         /// The render module uses this to upload meshes without the demo
         /// having to know about GPU resources.
@@ -46,7 +41,6 @@ pub fn Assets(
         /// Releases all live assets (zpool calls `deinit` on them, if defined)
         /// and deinitializes the collection.
         pub fn deinit(self: *Self) void {
-            self.handles.deinit(self.allocator);
             self.pending.deinit(self.allocator);
             self.pool.deinit();
         }
@@ -55,9 +49,6 @@ pub fn Assets(
         pub fn add(self: *Self, value: T) !Handle {
             const handle = try self.pool.add(value);
             errdefer _ = self.pool.removeIfLive(handle);
-
-            try self.handles.append(self.allocator, handle);
-            errdefer _ = self.handles.pop();
 
             try self.pending.append(self.allocator, handle);
 
@@ -72,12 +63,6 @@ pub fn Assets(
         /// Removes an asset and drops its bookkeeping entries.
         pub fn remove(self: *Self, handle: Handle) !void {
             try self.pool.remove(handle);
-            for (self.handles.items, 0..) |tracked, i| {
-                if (tracked.id == handle.id) {
-                    _ = self.handles.orderedRemove(i);
-                    break;
-                }
-            }
             for (self.pending.items, 0..) |tracked, i| {
                 if (tracked.id == handle.id) {
                     _ = self.pending.orderedRemove(i);

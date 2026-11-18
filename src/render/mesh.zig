@@ -29,18 +29,11 @@ pub const Mesh = struct {
     /// Bytes per interleaved vertex.
     vertex_stride: u32,
 
-    /// GPU vertex attributes, with locations assigned in declaration order.
-    attributes: []zsdl.GPUVertexAttribute,
-    /// Format of each attribute, in the same order as `attributes`.
-    formats: []zsdl.GPUVertexElementFormat,
-
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *Mesh) void {
         self.allocator.free(self.vertex_data);
         self.allocator.free(self.index_data);
-        self.allocator.free(self.attributes);
-        self.allocator.free(self.formats);
     }
 
     /// Build a Mesh from a tuple of `.{ format, slice }` pairs and an index array.
@@ -102,16 +95,9 @@ pub const Mesh = struct {
         const index_data = try allocator.alloc(u8, indices.len * @sizeOf(u32));
         errdefer allocator.free(index_data);
 
-        const gpu_attrs = try allocator.alloc(zsdl.GPUVertexAttribute, attr_count);
-        errdefer allocator.free(gpu_attrs);
-
-        const formats = try allocator.alloc(zsdl.GPUVertexElementFormat, attr_count);
-        errdefer allocator.free(formats);
-
         var offset: u32 = 0;
-        inline for (info.field_names, 0..) |name, i| {
+        inline for (info.field_names) |name| {
             const pair = @field(attributes, name);
-            const fmt: zsdl.GPUVertexElementFormat = pair[0];
             const items = attributeSlice(pair[1]);
             const ElemT = std.meta.Elem(@TypeOf(pair[1]));
             const elem_size: u32 = @sizeOf(ElemT);
@@ -122,13 +108,6 @@ pub const Mesh = struct {
                 @memcpy(dst, &src);
             }
 
-            gpu_attrs[i] = .{
-                .location = i,
-                .buffer_slot = 0,
-                .format = fmt,
-                .offset = offset,
-            };
-            formats[i] = fmt;
             offset += elem_size;
         }
 
@@ -140,8 +119,6 @@ pub const Mesh = struct {
             .vertex_count = vertex_count,
             .index_count = indices.len,
             .vertex_stride = stride,
-            .attributes = gpu_attrs,
-            .formats = formats,
             .allocator = allocator,
         };
     }
@@ -252,42 +229,4 @@ test "Mesh.from interleaves vertex attributes" {
     try std.testing.expectEqual(@as(f32, 0.0), floats[0]);
     try std.testing.expectEqual(@as(f32, 0.5), floats[1]);
     try std.testing.expectEqual(@as(f32, 1.0), floats[3]);
-}
-
-/// Maps an SDL vertex element format to the matching Zig slice type, e.g.
-/// `.float3 => [][3]f32`. Used when declaring vertex layouts by format.
-pub fn vertexFormatToType(format: zsdl.GPUVertexElementFormat) type {
-    return switch (format) {
-        .int => []i32,
-        .int2 => [][2]i32,
-        .int3 => [][3]i32,
-        .int4 => [][4]i32,
-
-        .uint => []u32,
-        .uint2 => [][2]u32,
-        .uint3 => [][3]u32,
-        .uint4 => [][4]u32,
-
-        .float => []f32,
-        .float2 => [][2]f32,
-        .float3 => [][3]f32,
-        .float4 => [][4]f32,
-
-        .byte2, .byte2_norm => [][2]i8,
-        .byte4, .byte4_norm => [][4]i8,
-
-        .ubyte2, .ubyte2_norm => [][2]u8,
-        .ubyte4, .ubyte4_norm => [][4]u8,
-
-        .short2, .short2_norm => [][2]i16,
-        .short4, .short4_norm => [][4]i16,
-
-        .ushort2, .ushort2_norm => [][2]u16,
-        .ushort4, .ushort4_norm => [][4]u16,
-
-        .half2 => [][2]f16,
-        .half4 => [][4]f16,
-
-        else => unreachable,
-    };
 }

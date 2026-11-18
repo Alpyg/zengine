@@ -4,7 +4,6 @@
 
 const std = @import("std");
 
-const zflecs = @import("zflecs");
 const zgui = @import("zgui");
 const zsdl = @import("zsdl");
 

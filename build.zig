@@ -39,7 +39,6 @@ pub fn build(b: *std.Build) void {
         .strip = false,
         .imports = &.{
             .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") },
-            .{ .name = "zgpu", .module = zgpu_dep.module("root") },
             .{ .name = "zflecs", .module = zflecs_dep.module("root") },
             .{ .name = "zgui", .module = zgui_dep.module("root") },
             .{ .name = "zmath", .module = zmath_dep.module("root") },

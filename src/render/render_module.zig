@@ -13,7 +13,6 @@ const z = @import("../root.zig");
 
 pub const Mesh = z.Mesh;
 pub const GpuMesh = z.GpuMesh;
-pub const Material = z.Material;
 
 /// Subphases inside `Phase.render`, chained in this order.
 pub const RenderPhase = enum {

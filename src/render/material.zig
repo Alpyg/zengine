@@ -159,7 +159,6 @@ pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
         const Self = @This();
 
         pub const Uniforms = T;
-        pub const VertexAttributes = V;
         pub const vertex_stride = stride;
 
         /// Graphics pipeline created from the shader pair and vertex layout.
@@ -286,12 +285,6 @@ pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
             zsdl.releaseGPUGraphicsPipeline(self.device, self.pipeline);
             zsdl.releaseGPUShader(self.device, self.fragment_shader);
             zsdl.releaseGPUShader(self.device, self.vertex_shader);
-        }
-
-        /// Push `self.uniforms` into the uniform slots declared by the shader.
-        /// `*const Self` so it can be called on a copy from the asset pool.
-        pub fn flush(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {
-            self.pushUniforms(cmd);
         }
 
         pub fn pushUniforms(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {

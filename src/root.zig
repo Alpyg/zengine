@@ -1,12 +1,11 @@
 //! Public API surface. Re-exports the vendored libraries, the ECS, the engine
 //! modules and their components/resources so demos can `@import("z")` only.
 
-const std = @import("std");
-
 pub const zflecs = @import("zflecs");
-pub const zsdl = @import("zsdl");
 pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
+pub const zmesh = @import("zmesh");
+pub const zsdl = @import("zsdl");
 pub const zstbi = @import("zstbi");
 
 /// Compile-time embedded SPIR-V shaders
@@ -40,7 +39,6 @@ pub const Gfx = GfxModule.Gfx;
 pub const PostRenderPhase = GfxModule.PostRenderPhase;
 pub const GlobalTransform = TransformModule.GlobalTransform;
 pub const Input = InputModule.Input;
-pub const MainCamera = CameraModule.MainCamera;
 pub const Name = TransformModule.Name;
 pub const Time = TimeModule.Time;
 pub const Transform = TransformModule.Transform;

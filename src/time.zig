@@ -1,9 +1,6 @@
 //! Frame timing: elapsed time, delta time and frame-rate statistics.
 
-const std = @import("std");
-
 const zsdl = @import("zsdl");
-const zm = @import("zmath");
 
 const z = @import("root.zig");
 
