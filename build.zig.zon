@@ -28,10 +28,6 @@
             .url = "git+https://github.com/zig-gamedev/zpool#f99ee2483b893978492881887a9a256bead24335",
             .hash = "zpool-0.11.0-dev-bG692RZEAQCXkpITAcuuGU-PUSJppm-C-Lcjo-p2BON6",
         },
-        .zmesh = .{
-            .url = "git+https://github.com/zig-gamedev/zmesh#11d6e048f42cd3ee5d08d30d143f8eeab0ae6886",
-            .hash = "zmesh-0.11.0-dev-oO3A5u4-EAB3hsnSTrpDC4M4DknrBb6HUmbUNpERxWBt",
-        },
         .zstbi = .{
             .url = "git+https://github.com/zig-gamedev/zstbi#6b9bea1fd13eb7c8299f23605b4c6b04fccd9aa7",
             .hash = "zstbi-0.11.0-dev-L0Ea_wGXBwCvXIzUWRNZe-6FpofI_nz4uAOQ4O0Fuxko",

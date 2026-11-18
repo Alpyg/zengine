@@ -1,6 +1,6 @@
 //! Frame phases and system sets.
 //!
-//! `Phase` is a plain enum of top-level pipeline stages, registered through
+//! `Phase` is a plain enum of top-level pipeline phases, registered through
 //! `PhaseModule` (or directly with `Ecs.registerPhases(Phase)`). Both the default
 //! phases and custom sets registered with `Ecs.registerPhaseSet(phase, SetEnum)`
 //! are stored through the same `PhaseStorage` API; each value maps to a flecs
@@ -29,7 +29,7 @@ pub const Phase = enum(u8) {
     last,
 };
 
-/// Per-world entity table for a stage enum (top-level `Phase` or a custom set).
+/// Per-world entity table for a phase enum (top-level `Phase` or a custom set).
 /// The caller fills the entities; `get` validates that the table was
 /// initialized for the `Ecs` being used.
 pub fn PhaseStorage(comptime S: type) type {
@@ -53,15 +53,15 @@ pub fn PhaseStorage(comptime S: type) type {
         }
 
         /// Stores the entity for `value`.
-        pub fn set(comptime value: S, stage_entity: zflecs.entity_t) void {
-            entities[indexOf(value)] = stage_entity;
+        pub fn set(comptime value: S, phase_entity: zflecs.entity_t) void {
+            entities[indexOf(value)] = phase_entity;
         }
 
         /// Entity for `value`. Panics if the table was not initialized for this
         /// world.
         pub fn get(ecs: anytype, comptime value: S) zflecs.entity_t {
             if (world_id != ecs.id) {
-                @panic("stage '" ++ @typeName(S) ++
+                @panic("phase '" ++ @typeName(S) ++
                     "' is not registered for this world; initialize it before use");
             }
             return entities[indexOf(value)];
@@ -89,6 +89,6 @@ pub fn next(phase: Phase) ?Phase {
 
 /// Resolves a top-level phase or a custom set value to its entity, using the
 /// same storage API for both.
-pub inline fn resolve(ecs: anytype, comptime stage: anytype) zflecs.entity_t {
-    return PhaseStorage(@TypeOf(stage)).get(ecs, stage);
+pub inline fn resolve(ecs: anytype, comptime phase: anytype) zflecs.entity_t {
+    return PhaseStorage(@TypeOf(phase)).get(ecs, phase);
 }

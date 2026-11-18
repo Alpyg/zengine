@@ -20,7 +20,6 @@ pub fn build(b: *std.Build) void {
     const zmath_dep = b.dependency("zmath", .{});
     const zpool_dep = b.dependency("zpool", .{});
     const zstbi_dep = b.dependency("zstbi", .{});
-    const zmesh_dep = b.dependency("zmesh", .{});
 
     // Directory holding the `.slang` shaders. Each file is compiled to SPIR-V
     // at build time and exposed as a field on the generated `shaders` module.
@@ -43,7 +42,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "zgui", .module = zgui_dep.module("root") },
             .{ .name = "zmath", .module = zmath_dep.module("root") },
             .{ .name = "zpool", .module = zpool_dep.module("root") },
-            .{ .name = "zmesh", .module = zmesh_dep.module("root") },
             .{ .name = "zstbi", .module = zstbi_dep.module("root") },
             .{ .name = "shaders", .module = shaders_mod },
         },
@@ -59,8 +57,22 @@ pub fn build(b: *std.Build) void {
     @import("zgpu").addLibraryPathsTo(unit_tests);
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
-    const test_step = b.step("test", "Run unit tests");
+    const integration_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/root.zig"),
+            .target = options.target,
+            .optimize = options.optimize,
+            .imports = &.{
+                .{ .name = "z", .module = mod },
+            },
+        }),
+    });
+    @import("zgpu").addLibraryPathsTo(integration_tests);
+    const run_integration_tests = b.addRunArtifact(integration_tests);
+
+    const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_unit_tests.step);
+    test_step.dependOn(&run_integration_tests.step);
 
     buildExamples(b, options, mod);
 }

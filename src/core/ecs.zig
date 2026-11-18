@@ -4,7 +4,7 @@
 //! Registration conventions:
 //! - a type with `RESOURCE` is a singleton resource; `init(ecs)` is called once
 //! - a type with `COMPONENT` is a component, or a tag when it is zero-sized
-//! - a type with `stage` + `run` is a system (`System(...)` produces these)
+//! - a type with `phase` + `run` is a system (produced by `System(...)`)
 //! - a type with `EVENT_QUEUE` comes from `Event(T)`
 //! - any other struct is treated as a namespace and its declarations are
 //!   registered recursively (non-systems first, then systems)
@@ -67,6 +67,10 @@ should_exit: bool = false,
 /// Deinitializers, called in reverse registration order by `deinit`.
 deinit_fns: std.ArrayListUnmanaged(*const fn (*Ecs) void) = .empty,
 
+/// System entities grouped by their phase or set value. Used by
+/// `setPhaseEnabled` to disable set membership without breaking phase order.
+phase_systems: std.AutoHashMapUnmanaged(zflecs.entity_t, std.ArrayListUnmanaged(zflecs.entity_t)) = .{},
+
 /// Creates the world and registers image loading. The default phases are
 /// registered by `z.PhaseModule`, which must be registered before systems.
 pub fn init(allocator: std.mem.Allocator) *Ecs {
@@ -90,6 +94,10 @@ pub fn deinit(self: *Ecs) void {
         self.deinit_fns.items[i](self);
     }
     self.deinit_fns.deinit(self.allocator);
+
+    var systems_it = self.phase_systems.valueIterator();
+    while (systems_it.next()) |systems| systems.deinit(self.allocator);
+    self.phase_systems.deinit(self.allocator);
 
     z.zstbi.deinit();
     _ = zflecs.fini(self.world);
@@ -199,7 +207,12 @@ fn addComponent(self: *Ecs, entity: zflecs.entity_t, component: anytype) void {
 
 /// Adds one system to the world and initializes its argument tuple.
 fn registerSystem(self: *Ecs, comptime T: type) void {
-    _ = zflecs.ADD_SYSTEM(self.world, @typeName(T), T.stageEntity(self), T.run);
+    const phase = T.phaseEntity(self);
+    const entity = zflecs.ADD_SYSTEM(self.world, @typeName(T), phase, T.run);
+
+    const gop = self.phase_systems.getOrPut(self.allocator, phase) catch @panic("oom");
+    if (!gop.found_existing) gop.value_ptr.* = .empty;
+    gop.value_ptr.append(self.allocator, entity) catch @panic("oom");
 
     if (@hasDecl(T, "init")) T.init(self);
     if (@hasDecl(T, "deinit")) self.addDeinit(systemDeinit(T));
@@ -426,7 +439,8 @@ pub fn registerPhaseSet(self: *Ecs, comptime phase: Phase, comptime S: type) *Ec
     const parent = phase_module.entity(self, phase);
     const last = self.registerPhaseChain(S, parent);
 
-    // Keep the set inside the parent phase's slot.
+    // Keep the set inside the parent phase's slot. Disabling a set value skips
+    // its systems (and later values), but not this phase dependency.
     if (last) |last_entity| {
         if (comptime phase_module.next(phase)) |next_phase| {
             zflecs.add_pair(self.world, phase_module.entity(self, next_phase), zflecs.DependsOn, last_entity);
@@ -444,24 +458,44 @@ fn assertEnum(comptime S: type, comptime caller: []const u8) void {
 }
 
 /// Enables or disables a top-level phase, an entire set enum, or a single set
-/// value. Disabling cascades to nested systems/phases through `DependsOn`.
-pub fn setStageEnabled(self: *Ecs, comptime stage: anytype, enabled: bool) void {
-    const T = @TypeOf(stage);
+/// value. Top-level phases disable their dependency subtree; set values disable
+/// their systems (and later values in the same set) without disabling the
+/// phases that depend on the set.
+pub fn setPhaseEnabled(self: *Ecs, comptime phase: anytype, enabled: bool) void {
+    const T = @TypeOf(phase);
     if (T == Phase) {
-        zflecs.enable(self.world, phase_module.entity(self, stage), enabled);
+        zflecs.enable(self.world, phase_module.entity(self, phase), enabled);
     } else if (T == type) {
-        const Storage = phase_module.PhaseStorage(stage);
-        inline for (@typeInfo(stage).@"enum".field_names) |name| {
-            const value = comptime @field(stage, name);
-            zflecs.enable(self.world, Storage.get(self, value), enabled);
-        }
+        self.setPhaseEnumSystemsEnabled(phase, 0, enabled);
     } else {
-        zflecs.enable(self.world, phase_module.resolve(self, stage), enabled);
+        self.setPhaseEnumSystemsEnabled(T, enumIndex(T, phase), enabled);
     }
 }
 
+fn setPhaseEnumSystemsEnabled(self: *Ecs, comptime S: type, comptime start: usize, enabled: bool) void {
+    const Storage = phase_module.PhaseStorage(S);
+    inline for (@typeInfo(S).@"enum".field_names, 0..) |name, i| {
+        if (comptime i >= start) {
+            const value = comptime @field(S, name);
+            self.setSystemsEnabled(Storage.get(self, value), enabled);
+        }
+    }
+}
+
+fn setSystemsEnabled(self: *Ecs, phase_entity: zflecs.entity_t, enabled: bool) void {
+    const systems = self.phase_systems.getPtr(phase_entity) orelse return;
+    for (systems.items) |system| zflecs.enable(self.world, system, enabled);
+}
+
+fn enumIndex(comptime S: type, comptime value: S) usize {
+    inline for (@typeInfo(S).@"enum".field_names, 0..) |name, i| {
+        if (@field(S, name) == value) return i;
+    }
+    unreachable;
+}
+
 inline fn isSystem(comptime T: type) bool {
-    return @hasDecl(T, "stage") and @hasDecl(T, "run");
+    return @hasDecl(T, "phase") and @hasDecl(T, "run");
 }
 
 test "ecs system" {
@@ -574,12 +608,12 @@ test "registerPhaseSet chains values under a phase" {
     const SetSystem = System(Set.b, struct {
         pub fn run() void {}
     });
-    try std.testing.expectEqual(b, SetSystem.stageEntity(ecs));
+    try std.testing.expectEqual(b, SetSystem.phaseEntity(ecs));
 
-    ecs.setStageEnabled(Phase.update, true);
-    ecs.setStageEnabled(Set, true);
-    ecs.setStageEnabled(Set.b, false);
-    ecs.setStageEnabled(Set.b, true);
+    ecs.setPhaseEnabled(Phase.update, true);
+    ecs.setPhaseEnabled(Set, true);
+    ecs.setPhaseEnabled(Set.b, false);
+    ecs.setPhaseEnabled(Set.b, true);
 }
 
 test "Ecs.deinit runs module, resource and event deinit" {

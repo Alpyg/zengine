@@ -15,17 +15,17 @@ const zflecs = @import("zflecs");
 
 const phase_module = @import("phase.zig");
 
-pub fn System(stage_value: anytype, comptime S: anytype) type {
+pub fn System(phase_value: anytype, comptime S: anytype) type {
     const param_types = @typeInfo(@TypeOf(S.run)).@"fn".param_types;
 
     return struct {
         pub const Name = @typeName(S);
 
         /// The phase or custom set value this system belongs to.
-        pub const stage = stage_value;
+        pub const phase = phase_value;
 
-        pub fn stageEntity(ecs: anytype) zflecs.entity_t {
-            return phase_module.resolve(ecs, stage);
+        pub fn phaseEntity(ecs: anytype) zflecs.entity_t {
+            return phase_module.resolve(ecs, phase);
         }
 
         const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
