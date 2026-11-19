@@ -3,7 +3,7 @@ const z = @import("z");
 
 test "resource pointers enforce const and mutable access" {
     const E = struct {
-        const Counter = struct {
+        pub const Counter = struct {
             pub const RESOURCE = {};
             value: u32 = 0,
 
@@ -12,18 +12,18 @@ test "resource pointers enforce const and mutable access" {
             }
         };
 
-        const Seen = struct {
+        pub const Seen = struct {
             pub const RESOURCE = {};
             value: u32 = 0,
         };
 
-        const Bump = z.System(z.Phase.update, struct {
+        pub const Bump = z.System(z.Phase.update, struct {
             pub fn run(counter: z.Resource(*Counter)) void {
                 counter.value += 1;
             }
         });
 
-        const Copy = z.System(z.Phase.post_update, struct {
+        pub const Copy = z.System(z.Phase.post_update, struct {
             pub fn run(counter: z.Resource(Counter), seen: z.Resource(*Seen)) void {
                 seen.value = counter.value;
             }

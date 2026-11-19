@@ -83,12 +83,16 @@ pub fn main(init: std.process.Init) !void {
 
     var vertex_info: ?StageInfo = null;
     var fragment_info: ?StageInfo = null;
+    var vertex_ep: ?slang.EntryPoint = null;
 
     var i: u32 = 0;
     while (i < layout.entryPointCount()) : (i += 1) {
         const ep = layout.entryPointByIndex(i) orelse continue;
         switch (ep.stage()) {
-            .vertex => vertex_info = stageInfo(layout),
+            .vertex => {
+                vertex_info = stageInfo(layout);
+                vertex_ep = ep;
+            },
             .fragment => fragment_info = stageInfo(layout),
             else => {},
         }
@@ -114,6 +118,12 @@ pub fn main(init: std.process.Init) !void {
 
     try writeStage(w, "vertex", vertex);
     try writeStage(w, "fragment", fragment);
+
+    if (vertex_ep) |ep| {
+        try writeVertexInputs(w, ep);
+    } else {
+        try w.writeAll("pub const vertex_stride = 0;\npub const vertex_inputs = .{};\n\n");
+    }
 
     if (findUniformBlock(layout)) |block| {
         try writeUniformBlock(w, block);
@@ -291,4 +301,160 @@ fn scalarName(s: slang.ScalarType) []const u8 {
 fn usage() error{InvalidArguments} {
     std.debug.print("usage: zslang-shaderc <input.slang> <output.spv> <output.meta.zig>\n", .{});
     return error.InvalidArguments;
+}
+
+const VertexInput = struct {
+    name: []const u8,
+    location: u32,
+    format: []const u8,
+    zig_type: []const u8,
+    offset: usize,
+    size: usize,
+};
+
+fn writeVertexInputs(w: *std.Io.Writer, ep: slang.EntryPoint) !void {
+    var inputs: [32]VertexInput = undefined;
+    var count: usize = 0;
+    var stride: usize = 0;
+
+    var pidx: u32 = 0;
+    while (pidx < ep.parameterCount()) : (pidx += 1) {
+        const param = ep.parameterByIndex(pidx) orelse continue;
+        if (param.category() != .varying_input) continue;
+
+        const tl = param.typeLayout() orelse continue;
+        if (tl.kind() == .structure) {
+            var fidx: u32 = 0;
+            while (fidx < tl.fieldCount()) : (fidx += 1) {
+                const field = tl.fieldByIndex(fidx) orelse continue;
+                const ft = field.typeLayout() orelse continue;
+                const info = formatInfo(ft) orelse {
+                    std.debug.print("unsupported vertex input type for '{s}'\n", .{field.name()});
+                    return error.UnsupportedVertexInput;
+                };
+                const location = field.bindingIndex();
+                const offset = stride;
+                const size = info.size;
+                inputs[count] = .{
+                    .name = field.name(),
+                    .location = location,
+                    .format = info.format,
+                    .zig_type = info.zig_type,
+                    .offset = offset,
+                    .size = size,
+                };
+                count += 1;
+                stride = @max(stride, offset + size);
+            }
+        } else {
+            const info = formatInfo(tl) orelse return error.UnsupportedVertexInput;
+            const location = param.bindingIndex();
+            const offset = stride;
+            const size = info.size;
+            inputs[count] = .{
+                .name = param.name(),
+                .location = location,
+                .format = info.format,
+                .zig_type = info.zig_type,
+                .offset = offset,
+                .size = size,
+            };
+            count += 1;
+            stride = @max(stride, offset + size);
+        }
+    }
+
+    try w.print("pub const vertex_stride = {d};\n", .{stride});
+    try w.writeAll("pub const vertex_inputs = .{\n");
+    for (inputs[0..count]) |input| {
+        try w.writeAll("    .{ .name = ");
+        try w.printStringEscaped(input.name);
+        try w.print(", .location = {d}, .format = ", .{input.location});
+        try w.printStringEscaped(input.format);
+        try w.print(", .offset = {d}, .size = {d} }},\n", .{ input.offset, input.size });
+    }
+    try w.writeAll("};\n\n");
+
+    try w.writeAll("pub const Vertex = struct {\n");
+    for (inputs[0..count]) |input| {
+        try w.writeAll("    @\"");
+        try w.writeAll(input.name);
+        try w.writeAll("\": ");
+        try w.writeAll(input.zig_type);
+        try w.writeAll(",\n");
+    }
+    try w.writeAll("};\n\n");
+}
+
+const FormatInfo = struct { format: []const u8, zig_type: []const u8, size: u32 };
+
+fn formatInfo(ft: slang.TypeLayout) ?FormatInfo {
+    const n = switch (ft.kind()) {
+        .scalar => 1,
+        .vector => ft.columnCount(),
+        else => return null,
+    };
+
+    const fmt = switch (n) {
+        1 => switch (ft.scalarType()) {
+            .float32 => "float",
+            .uint32 => "uint",
+            .int32 => "int",
+            else => return null,
+        },
+        2 => switch (ft.scalarType()) {
+            .float32 => "float2",
+            .uint32 => "uint2",
+            .int32 => "int2",
+            else => return null,
+        },
+        3 => switch (ft.scalarType()) {
+            .float32 => "float3",
+            .uint32 => "uint3",
+            .int32 => "int3",
+            else => return null,
+        },
+        4 => switch (ft.scalarType()) {
+            .float32 => "float4",
+            .uint32 => "uint4",
+            .int32 => "int4",
+            else => return null,
+        },
+        else => return null,
+    };
+
+    const zig = switch (n) {
+        1 => switch (ft.scalarType()) {
+            .float32 => "f32",
+            .uint32 => "u32",
+            .int32 => "i32",
+            else => return null,
+        },
+        2 => switch (ft.scalarType()) {
+            .float32 => "[2]f32",
+            .uint32 => "[2]u32",
+            .int32 => "[2]i32",
+            else => return null,
+        },
+        3 => switch (ft.scalarType()) {
+            .float32 => "[3]f32",
+            .uint32 => "[3]u32",
+            .int32 => "[3]i32",
+            else => return null,
+        },
+        4 => switch (ft.scalarType()) {
+            .float32 => "[4]f32",
+            .uint32 => "[4]u32",
+            .int32 => "[4]i32",
+            else => return null,
+        },
+        else => return null,
+    };
+
+    const scalar_size: u32 = switch (ft.scalarType()) {
+        .float32, .uint32, .int32 => 4,
+        else => return null,
+    };
+
+    return .{ .format = fmt, .zig_type = zig, .size = scalar_size * @as(u32, @intCast(n)) };
 }

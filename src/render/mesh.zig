@@ -230,3 +230,93 @@ test "Mesh.from interleaves vertex attributes" {
     try std.testing.expectEqual(@as(f32, 0.5), floats[1]);
     try std.testing.expectEqual(@as(f32, 1.0), floats[3]);
 }
+
+/// Build an interleaved mesh from one slice per reflected vertex input.
+///
+/// `attributes` must be a struct whose fields match the shader input names,
+/// e.g. `.{ .position = positions, .color = colors }`.
+pub fn fromAttributes(
+    allocator: std.mem.Allocator,
+    comptime layout: anytype,
+    comptime stride: u32,
+    attributes: anytype,
+    indices: []const u32,
+) !Mesh {
+    const A = @TypeOf(attributes);
+    if (@typeInfo(A) != .@"struct") {
+        @compileError("Mesh attributes must be a struct of named slices");
+    }
+    if (comptime layout.len == 0) return error.NoAttributes;
+
+    inline for (layout) |input| {
+        if (!@hasField(A, input.name)) {
+            @compileError("Missing mesh attribute '" ++ input.name ++ "' required by the shader");
+        }
+    }
+
+    const first_items = attributeSlice(@field(attributes, layout[0].name));
+    const vertex_count = first_items.len;
+
+    inline for (layout, 0..) |input, i| {
+        if (i == 0) continue;
+        const items = attributeSlice(@field(attributes, input.name));
+        if (items.len != vertex_count) {
+            std.debug.panic(
+                "Mesh attribute '{s}' has {d} elements, expected {d}",
+                .{ input.name, items.len, vertex_count },
+            );
+        }
+    }
+
+    const vertex_data = try allocator.alloc(u8, @as(usize, stride) * vertex_count);
+    errdefer allocator.free(vertex_data);
+
+    const index_data = try allocator.alloc(u8, indices.len * @sizeOf(u32));
+    errdefer allocator.free(index_data);
+
+    inline for (layout) |input| {
+        const items = attributeSlice(@field(attributes, input.name));
+        const ElemT = std.meta.Elem(@TypeOf(items));
+        const size = @sizeOf(ElemT);
+
+        if (size != input.size) {
+            @compileError("Mesh attribute '" ++ input.name ++ "' size does not match shader reflection");
+        }
+
+        for (items, 0..) |value, vi| {
+            const dst = vertex_data[vi * stride + input.offset ..][0..size];
+            @memcpy(dst, std.mem.asBytes(&value));
+        }
+    }
+
+    @memcpy(index_data, std.mem.sliceAsBytes(indices));
+
+    return .{
+        .vertex_data = vertex_data,
+        .index_data = index_data,
+        .vertex_count = vertex_count,
+        .index_count = indices.len,
+        .vertex_stride = stride,
+        .allocator = allocator,
+    };
+}
+
+/// Mesh helper for a compiled shader. `Vertex` is generated from the shader's
+/// reflected vertex inputs, and `from` accepts one named slice per input.
+pub fn MeshFor(comptime S: type) type {
+    comptime {
+        if (!@hasDecl(S, "Vertex") or !@hasDecl(S, "vertex_inputs") or
+            !@hasDecl(S, "vertex_stride"))
+        {
+            @compileError("MeshFor expects a compiled shader struct with vertex reflection");
+        }
+    }
+
+    return struct {
+        pub const Vertex = S.Vertex;
+
+        pub fn from(allocator: std.mem.Allocator, attributes: anytype, indices: []const u32) !Mesh {
+            return fromAttributes(allocator, S.vertex_inputs, S.vertex_stride, attributes, indices);
+        }
+    };
+}

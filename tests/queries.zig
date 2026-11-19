@@ -3,15 +3,15 @@ const z = @import("z");
 
 test "queries expose the correct mutability and values" {
     const E = struct {
-        const Pos = struct {
+        pub const Pos = struct {
             pub const COMPONENT = {};
             x: i32 = 0,
         };
-        const Vel = struct {
+        pub const Vel = struct {
             pub const COMPONENT = {};
             x: i32 = 0,
         };
-        const Tag = struct {
+        pub const Tag = struct {
             pub const COMPONENT = {};
         };
     };

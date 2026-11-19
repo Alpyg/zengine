@@ -1,7 +1,6 @@
 const std = @import("std");
 
 const z = @import("z");
-const zsdl = z.zsdl;
 const zm = z.zmath;
 
 pub const e = @import("ecs/ecs.zig");
@@ -27,20 +26,9 @@ pub fn main(init: std.process.Init) !void {
     app.run();
 }
 
-pub const StandardAttrs = struct {
-    position: [][3]f32,
-    color: [][3]f32,
-
-    pub const formats = .{
-        .position = zsdl.GPUVertexElementFormat.float3,
-        .color = zsdl.GPUVertexElementFormat.float3,
-    };
-};
-
 pub const TestMaterial = z.Material(
     z.shaders.shader,
     struct { object_to_clip: zm.Mat },
-    StandardAttrs,
 );
 
 pub const Setup = z.System(z.Phase.first, struct {
@@ -71,18 +59,22 @@ pub const Setup = z.System(z.Phase.first, struct {
             std.debug.panic("material init failed: {s}", .{@errorName(err)});
         const material_handle = materials.add(material) catch @panic("OOM");
 
-        const mesh = z.Mesh.from(ecs.allocator, .{
-            .{ .float3, &[_][3]f32{
-                .{ 0.0, 0.5, 0.0 },
-                .{ -0.5, -0.5, 0.0 },
-                .{ 0.5, -0.5, 0.0 },
-            } },
-            .{ .float3, &[_][3]f32{
-                .{ 1.0, 0.0, 0.0 },
-                .{ 0.0, 1.0, 0.0 },
-                .{ 0.0, 0.0, 1.0 },
-            } },
-        }, &[_]u32{ 0, 1, 2 }) catch @panic("mesh creation failed");
+        const positions = [_][3]f32{
+            .{ 0.0, 0.5, 0.0 },
+            .{ -0.5, -0.5, 0.0 },
+            .{ 0.5, -0.5, 0.0 },
+        };
+        const colors = [_][3]f32{
+            .{ 1.0, 0.0, 0.0 },
+            .{ 0.0, 1.0, 0.0 },
+            .{ 0.0, 0.0, 1.0 },
+        };
+
+        const mesh = z.MeshFor(z.shaders.shader).from(
+            ecs.allocator,
+            .{ .position = &positions, .color = &colors },
+            &[_]u32{ 0, 1, 2 },
+        ) catch @panic("mesh creation failed");
         const mesh_handle = meshes.add(mesh) catch @panic("OOM");
 
         const triangle = ecs.new("Triangle");

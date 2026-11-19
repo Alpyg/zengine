@@ -12,22 +12,21 @@ const z = @import("../root.zig");
 /// A material: a graphics pipeline + the per-draw resources (uniforms) it pushes.
 ///
 /// - `S`: a compiled shader struct from the generated `shaders` module. It must
-///   expose `spv`, `vertex`, `fragment`, `uniform_block` and `bindings`, which
-///   the build-time Slang reflection generates.
+///   expose `spv`, `vertex`, `fragment`, `uniform_block`, `bindings`,
+///   `vertex_inputs`, `vertex_stride` and `Vertex`, which the build-time Slang
+///   reflection generates.
 /// - `T`: struct of uniforms pushed for each draw. Validated against the
 ///   reflected uniform block at comptime.
-/// - `V`: vertex layout *type* — a named struct whose fields carry
-///   `zsdl.GPUVertexElementFormat` as default values, e.g.
-///   `struct { position: [][3]f32, color: [][3]f32 }`.
-///   The GPU layout (pitch, offsets, locations) is derived from `V` at
-///   comptime, so `init` takes no layout argument.
-pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
+///
+/// The GPU vertex layout is taken from the shader's reflected vertex inputs, so
+/// no separate vertex-layout argument is needed.
+pub fn Material(comptime S: type, comptime T: type) type {
     const uniforms_info = @typeInfo(T).@"struct";
-    const attrs_info = @typeInfo(V).@"struct";
 
     comptime {
         if (!@hasDecl(S, "spv") or !@hasDecl(S, "vertex") or
-            !@hasDecl(S, "fragment") or !@hasDecl(S, "uniform_block"))
+            !@hasDecl(S, "fragment") or !@hasDecl(S, "uniform_block") or
+            !@hasDecl(S, "vertex_inputs") or !@hasDecl(S, "vertex_stride"))
         {
             @compileError("Material expects a compiled shader struct from the generated `shaders` module");
         }
@@ -96,52 +95,16 @@ pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
             @compileError("Material uniform block is not reflected as a shader binding");
         }
     }
-    comptime {
-        const fmt_info = @typeInfo(@TypeOf(V.formats)).@"struct";
-        if (fmt_info.field_names.len != attrs_info.field_names.len)
-            @compileError("Material vertex layout formats count must match struct field count");
-        for (attrs_info.field_names) |name| {
-            if (!@hasField(@TypeOf(V.formats), name))
-                @compileError("Material vertex layout formats missing field '" ++ name ++ "'");
-        }
-    }
-
-    // --- comptime vertex layout derivation from V ---
-
-    const AttrDesc = struct {
-        format: zsdl.GPUVertexElementFormat,
-        offset: u32,
-        elem_size: u32,
-    };
-    const formats = V.formats;
-    const attr_count = attrs_info.field_names.len;
-    const descs: [attr_count]AttrDesc = comptime blk: {
-        var tmp: [attr_count]AttrDesc = undefined;
-        var off: u32 = 0;
-        for (attrs_info.field_names, attrs_info.field_types, 0..) |name, FT, i| {
-            const fmt = @field(formats, name);
-            const ElemT = std.meta.Elem(FT);
-            const sz: u32 = @sizeOf(ElemT);
-            tmp[i] = .{ .format = fmt, .offset = off, .elem_size = sz };
-            off += sz;
-        }
-        break :blk tmp;
-    };
-
-    const stride: u32 = comptime blk: {
-        var s: u32 = 0;
-        for (descs) |d| s += d.elem_size;
-        break :blk s;
-    };
-
+    // --- comptime vertex layout derivation from the shader reflection ---
+    const attr_count = S.vertex_inputs.len;
     const gpu_attrs: [attr_count]zsdl.GPUVertexAttribute = comptime blk: {
         var a: [attr_count]zsdl.GPUVertexAttribute = undefined;
-        for (descs, 0..) |d, i| {
+        for (S.vertex_inputs, 0..) |input, i| {
             a[i] = .{
-                .location = i,
+                .location = input.location,
                 .buffer_slot = 0,
-                .format = d.format,
-                .offset = d.offset,
+                .format = parseVertexFormat(input.format),
+                .offset = input.offset,
             };
         }
         break :blk a;
@@ -150,7 +113,7 @@ pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
     const gpu_vb_desc: [1]zsdl.GPUVertexBufferDescription = .{
         .{
             .slot = 0,
-            .pitch = stride,
+            .pitch = S.vertex_stride,
             .input_rate = .vertex,
         },
     };
@@ -159,7 +122,7 @@ pub fn Material(comptime S: type, comptime T: type, comptime V: type) type {
         const Self = @This();
 
         pub const Uniforms = T;
-        pub const vertex_stride = stride;
+        pub const vertex_stride = S.vertex_stride;
 
         /// Graphics pipeline created from the shader pair and vertex layout.
         pipeline: *zsdl.GPUGraphicsPipeline,
@@ -367,4 +330,20 @@ fn expectedScalarName(comptime T: type) ?[]const u8 {
         .bool => "bool",
         else => null,
     };
+}
+
+fn parseVertexFormat(comptime name: []const u8) zsdl.GPUVertexElementFormat {
+    if (std.mem.eql(u8, name, "float")) return .float;
+    if (std.mem.eql(u8, name, "float2")) return .float2;
+    if (std.mem.eql(u8, name, "float3")) return .float3;
+    if (std.mem.eql(u8, name, "float4")) return .float4;
+    if (std.mem.eql(u8, name, "int")) return .int;
+    if (std.mem.eql(u8, name, "int2")) return .int2;
+    if (std.mem.eql(u8, name, "int3")) return .int3;
+    if (std.mem.eql(u8, name, "int4")) return .int4;
+    if (std.mem.eql(u8, name, "uint")) return .uint;
+    if (std.mem.eql(u8, name, "uint2")) return .uint2;
+    if (std.mem.eql(u8, name, "uint3")) return .uint3;
+    if (std.mem.eql(u8, name, "uint4")) return .uint4;
+    @compileError("Unsupported reflected vertex format: " ++ name);
 }

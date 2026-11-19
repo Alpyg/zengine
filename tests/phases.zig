@@ -23,7 +23,7 @@ const Trace = struct {
 
 test "phases and subphases run in order" {
     const E = struct {
-        const Set = enum {
+        pub const Set = enum {
             pub const PHASE = .{ .parent = z.Phase.update };
 
             a,
@@ -61,6 +61,7 @@ test "phases and subphases run in order" {
     defer ecs.deinit();
 
     _ = ecs.registerModule(z.PhaseModule{})
+        .registerEcs(Trace)
         .registerEcs(E);
 
     ecs.progress();

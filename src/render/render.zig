@@ -9,6 +9,7 @@ pub const Material = material.Material;
 pub const mesh = @import("mesh.zig");
 pub const GpuMesh = mesh.GpuMesh;
 pub const Mesh = mesh.Mesh;
+pub const MeshFor = mesh.MeshFor;
 
 /// Render resources, systems and per-material plugins (see `render_module.zig`).
 pub const render_module = @import("render_module.zig");
