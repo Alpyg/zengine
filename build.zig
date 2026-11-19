@@ -9,7 +9,6 @@ pub fn build(b: *std.Build) void {
     };
 
     const zsdl_dep = b.dependency("zsdl", .{});
-    const zgpu_dep = b.dependency("zgpu", .{});
     const zflecs_dep = b.dependency("zflecs", .{});
     const zgui_dep = b.dependency("zgui", .{
         .backend = .sdl3_gpu,
@@ -47,14 +46,12 @@ pub fn build(b: *std.Build) void {
         },
     });
     mod.linkSystemLibrary("sdl3", .{});
-    mod.linkLibrary(zgpu_dep.artifact("zdawn"));
     mod.linkLibrary(zflecs_dep.artifact("flecs"));
     mod.linkLibrary(zgui_dep.artifact("imgui"));
 
     const unit_tests = b.addTest(.{
         .root_module = mod,
     });
-    @import("zgpu").addLibraryPathsTo(unit_tests);
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const integration_tests = b.addTest(.{
@@ -67,7 +64,6 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
-    @import("zgpu").addLibraryPathsTo(integration_tests);
     const run_integration_tests = b.addRunArtifact(integration_tests);
 
     const test_step = b.step("test", "Run unit and integration tests");
