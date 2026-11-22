@@ -35,3 +35,15 @@ zig build
 ```sh
 zig build --release=small
 ```
+
+## hotmod-run
+
+```sh
+zig build hotmod-run
+```
+
+## hotmod-module
+
+```sh
+zig build hotmod-module
+```

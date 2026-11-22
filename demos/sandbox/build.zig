@@ -2,7 +2,8 @@ const std = @import("std");
 
 pub const demo_name = "sandbox";
 
-pub fn build(b: *std.Build, options: anytype, mod: anytype) *std.Build.Step.Compile {
+pub fn build(b: *std.Build, options: anytype, mod: anytype, deps: anytype) *std.Build.Step.Compile {
+    _ = deps;
     const cwd_path = b.pathJoin(&.{ "demos", demo_name });
     const src_path = b.pathJoin(&.{ cwd_path, "src" });
     const exe = b.addExecutable(.{

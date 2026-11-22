@@ -60,9 +60,9 @@ test "phases and subphases run in order" {
     var ecs = z.Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
-    _ = ecs.registerModule(z.PhaseModule{})
-        .registerEcs(Trace)
-        .registerEcs(E);
+    _ = ecs.register(z.Phase)
+        .register(Trace)
+        .register(E);
 
     ecs.progress();
 
@@ -86,4 +86,44 @@ test "phases and subphases run in order" {
     const expected_without_last = [_][]const u8{ "first", "update", "a", "b" };
     try std.testing.expectEqualSlices([]const u8, &expected_without_last, trace.items[0..trace.len]);
     ecs.setPhaseEnabled(z.Phase.last, true);
+}
+
+var startup_trace: [8][]const u8 = undefined;
+var startup_trace_len: usize = 0;
+
+test "startup systems run once, before first" {
+    const E = struct {
+        pub const Setup = z.System(z.Phase.startup, struct {
+            pub fn run() void {
+                startup_trace[startup_trace_len] = "startup";
+                startup_trace_len += 1;
+            }
+        });
+        pub const First = z.System(z.Phase.first, struct {
+            pub fn run() void {
+                startup_trace[startup_trace_len] = "first";
+                startup_trace_len += 1;
+            }
+        });
+    };
+
+    startup_trace_len = 0;
+    var ecs = z.Ecs.init(std.testing.allocator);
+    defer ecs.deinit();
+
+    _ = ecs.register(z.Phase).register(E);
+
+    ecs.progress();
+    ecs.progress();
+
+    const expected = [_][]const u8{ "startup", "first", "first" };
+    try std.testing.expectEqualSlices([]const u8, &expected, startup_trace[0..startup_trace_len]);
+
+    // Re-enabling startup asks for one more run, then it is disabled again.
+    ecs.setPhaseEnabled(z.Phase.startup, true);
+    ecs.progress();
+    ecs.progress();
+
+    const reenabled = [_][]const u8{ "startup", "first", "first", "startup", "first", "first" };
+    try std.testing.expectEqualSlices([]const u8, &reenabled, startup_trace[0..startup_trace_len]);
 }

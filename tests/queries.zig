@@ -19,7 +19,7 @@ test "queries expose the correct mutability and values" {
     var ecs = z.Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
-    _ = ecs.registerEcs(E);
+    _ = ecs.register(E);
 
     const a = ecs.new("a");
     _ = ecs.add(a, .{ E.Pos{ .x = 1 }, E.Vel{ .x = 10 }, E.Tag{} });

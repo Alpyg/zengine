@@ -5,6 +5,9 @@
 /assets
 imgui.ini
 
+# Hot-reload module cache
+/mods/.cache
+
 # Devenv
 .devenv*
 devenv.local.nix

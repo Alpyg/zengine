@@ -7,12 +7,6 @@ const zm = @import("zmath");
 
 const z = @import("root.zig");
 
-const CameraModule = @This();
-
-pub fn init(_: CameraModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(CameraModule);
-}
-
 /// Component: perspective camera parameters and derived matrices.
 pub const Camera = struct {
     pub const COMPONENT = {};

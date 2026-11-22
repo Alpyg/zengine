@@ -72,3 +72,40 @@ pub fn main() !void {
     }
 }
 ```
+
+## Hot-reloadable modules
+
+`demos/hotmod` is a minimal example. The host loads
+`zig-out/lib/libhotmod.so` and swaps it whenever the file changes.
+
+```sh
+zig build hotmod-run       # terminal 1
+zig build hotmod-module    # terminal 2, after each edit
+# or:
+watchexec -c -r -e zig -- zig build hotmod-module
+```
+
+Rules for a hot-reloadable module:
+
+- Persistent state must live in the ECS world (entities, components,
+  resources), never in module globals. The loader disables and deletes the
+  module's systems and removes its resources before unloading the library.
+- The module must be built with the same Zig version, target, and optimization
+  mode as the host. These are checked when the library is loaded.
+- Component layouts must not change while hot reloading. A changed `size` or
+  `align` aborts the reload and rolls back to the previous version.
+- Implement `pub fn preReload(ecs: *z.Ecs) void` to release external resources
+  (threads, file handles, GPU handles) before the library is unloaded.
+
+A module exports one entry point:
+
+```zig
+const desc = z.hot.descriptor(z.Ecs, MyModule);
+
+export fn zengine_module_v1() *const z.hot.ModuleDesc {
+    return desc;
+}
+```
+
+The host can also scope registrations manually with `Ecs.beginModule` /
+`Ecs.endModule` and tear them down with `Ecs.deinitModule`.

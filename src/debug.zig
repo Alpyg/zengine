@@ -5,12 +5,6 @@ const zgui = @import("zgui");
 
 const z = @import("root.zig");
 
-const DebugModule = @This();
-
-pub fn init(_: DebugModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(DebugModule);
-}
-
 /// System: toggles mouse-look on Escape and submits the editor dockspace.
 /// `Dockspace` spans the window; `Main` and `Tool` are tabs inside it, each
 /// hosting its own nested dockspace.

@@ -1,6 +1,7 @@
-//! Meshes: CPU-side interleaved vertex/index data and GPU buffers. `Mesh.from`
-//! packs attributes into an interleaved layout; `upload` copies the data into
-//! vertex/index buffers through a transfer buffer.
+//! Meshes: CPU-side interleaved vertex/index data and GPU buffers.
+//! `fromAttributes` packs shader-reflected attributes into an interleaved
+//! layout; `upload` copies the data into vertex/index buffers through a
+//! transfer buffer.
 
 const std = @import("std");
 
@@ -34,93 +35,6 @@ pub const Mesh = struct {
     pub fn deinit(self: *Mesh) void {
         self.allocator.free(self.vertex_data);
         self.allocator.free(self.index_data);
-    }
-
-    /// Build a Mesh from a tuple of `.{ format, slice }` pairs and an index array.
-    ///
-    /// The data may be passed as a slice or as a pointer to an array:
-    ///
-    /// ```zig
-    /// const mesh = try Mesh.from(allocator, .{
-    ///     .{ .float3, &[_][3]f32{ .{0,0,0}, .{1,0,0}, .{0,1,0} } },
-    ///     .{ .float3, &[_][3]f32{ .{1,0,0}, .{0,1,0}, .{0,0,1} } },
-    /// }, &[_]u32{ 0, 1, 2 });
-    /// ```
-    pub fn from(
-        allocator: std.mem.Allocator,
-        attributes: anytype,
-        indices: []const u32,
-    ) !Mesh {
-        const A = @TypeOf(attributes);
-        const info = @typeInfo(A).@"struct";
-
-        if (!info.is_tuple)
-            @compileError("Mesh.from: attributes must be a tuple of .{ format, slice } pairs");
-
-        const attr_count = info.field_names.len;
-        if (attr_count == 0) return error.NoAttributes;
-
-        const first_pair = @field(attributes, info.field_names[0]);
-        const first_items = attributeSlice(first_pair[1]);
-        const vertex_count: u32 = @intCast(first_items.len);
-
-        inline for (info.field_names[1..]) |name| {
-            const pair = @field(attributes, name);
-            const items = attributeSlice(pair[1]);
-            if (items.len != first_items.len) {
-                std.debug.panic(
-                    "Mesh.from: attribute {s} has {d} elements, expected {d}",
-                    .{ name, items.len, first_items.len },
-                );
-            }
-        }
-
-        const stride = comptime blk: {
-            var s: u32 = 0;
-            for (info.field_types) |FT| {
-                const pair_info = @typeInfo(FT).@"struct";
-                if (!pair_info.is_tuple or pair_info.field_types.len != 2)
-                    @compileError("Mesh.from: each attribute must be .{ format, slice }, got " ++ @typeName(FT));
-
-                const SliceT = pair_info.field_types[1];
-                const ElemT = std.meta.Elem(SliceT);
-                s += @sizeOf(ElemT);
-            }
-            break :blk s;
-        };
-
-        const vertex_data = try allocator.alloc(u8, @as(usize, stride) * vertex_count);
-        errdefer allocator.free(vertex_data);
-
-        const index_data = try allocator.alloc(u8, indices.len * @sizeOf(u32));
-        errdefer allocator.free(index_data);
-
-        var offset: u32 = 0;
-        inline for (info.field_names) |name| {
-            const pair = @field(attributes, name);
-            const items = attributeSlice(pair[1]);
-            const ElemT = std.meta.Elem(@TypeOf(pair[1]));
-            const elem_size: u32 = @sizeOf(ElemT);
-
-            for (items, 0..) |v, vi| {
-                const dst = vertex_data[vi * stride + offset ..][0..elem_size];
-                const src = @as([elem_size]u8, @bitCast(v));
-                @memcpy(dst, &src);
-            }
-
-            offset += elem_size;
-        }
-
-        @memcpy(index_data, std.mem.sliceAsBytes(indices));
-
-        return .{
-            .vertex_data = vertex_data,
-            .index_data = index_data,
-            .vertex_count = vertex_count,
-            .index_count = indices.len,
-            .vertex_stride = stride,
-            .allocator = allocator,
-        };
     }
 
     /// Uploads the CPU data into new vertex/index buffers using `cmd`.
@@ -201,34 +115,6 @@ pub const Mesh = struct {
 
 fn attributeSlice(data: anytype) []const std.meta.Elem(@TypeOf(data)) {
     return data;
-}
-
-test "Mesh.from interleaves vertex attributes" {
-    const positions = [_][3]f32{
-        .{ 0.0, 0.5, 0.0 },
-        .{ -0.5, -0.5, 0.0 },
-        .{ 0.5, -0.5, 0.0 },
-    };
-    const colors = [_][3]f32{
-        .{ 1.0, 0.0, 0.0 },
-        .{ 0.0, 1.0, 0.0 },
-        .{ 0.0, 0.0, 1.0 },
-    };
-
-    var mesh = try Mesh.from(std.testing.allocator, .{
-        .{ .float3, &positions },
-        .{ .float3, &colors },
-    }, &[_]u32{ 0, 1, 2 });
-    defer mesh.deinit();
-
-    try std.testing.expectEqual(@as(usize, 3), mesh.vertex_count);
-    try std.testing.expectEqual(@as(usize, 3), mesh.index_count);
-    try std.testing.expectEqual(@as(u32, 24), mesh.vertex_stride);
-
-    const floats: [*]const f32 = @ptrCast(@alignCast(mesh.vertex_data.ptr));
-    try std.testing.expectEqual(@as(f32, 0.0), floats[0]);
-    try std.testing.expectEqual(@as(f32, 0.5), floats[1]);
-    try std.testing.expectEqual(@as(f32, 1.0), floats[3]);
 }
 
 /// Build an interleaved mesh from one slice per reflected vertex input.

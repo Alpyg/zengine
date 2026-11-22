@@ -42,8 +42,8 @@ test "resource pointers enforce const and mutable access" {
     var ecs = z.Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
-    _ = ecs.registerModule(z.PhaseModule{})
-        .registerEcs(E);
+    _ = ecs.register(z.Phase)
+        .register(E);
     ecs.progress();
     const counter = z.zflecs.singleton_get(ecs.world, E.Counter).?;
     const seen = z.zflecs.singleton_get(ecs.world, E.Seen).?;

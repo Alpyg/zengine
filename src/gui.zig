@@ -10,8 +10,6 @@ const zgui = @import("zgui");
 
 const z = @import("root.zig");
 
-const GuiModule = @This();
-
 /// True between `PreRender` and `Render` of the current frame.
 var frame_started: bool = false;
 
@@ -20,34 +18,41 @@ pub fn isFrameStarted() bool {
     return frame_started;
 }
 
-/// Initializes zgui, loads the UI font and creates the SDL3 GPU backend,
-/// docking enabled by default.
-pub fn init(_: GuiModule, ecs: *z.Ecs) void {
-    zgui.init(ecs.allocator);
+/// ImGui backend state. Initializing this resource sets up zgui, loads the UI
+/// font and creates the SDL3 GPU backend, docking enabled by default.
+pub const Gui = struct {
+    pub const RESOURCE = {};
 
-    _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
+    /// Marker so the singleton is a non-zero-sized component.
+    active: bool = true,
 
-    const gfx: *const z.Gfx = zflecs.singleton_get(ecs.world, z.Gfx).?;
+    pub fn init(ecs: *z.Ecs) Gui {
+        zgui.init(ecs.allocator);
 
-    zgui.backend.init(
-        gfx.window,
-        .{
-            .device = gfx.device,
-            .color_target_format = @backingInt(gfx.swapchain_format),
-            .msaa_samples = 0,
-        },
-    );
+        _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
 
-    zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
-    zgui.getStyle().scaleAllSizes(1);
+        const gfx: *const z.Gfx = zflecs.singleton_get(ecs.world, z.Gfx).?;
 
-    _ = ecs.registerEcs(GuiModule);
-}
+        zgui.backend.init(
+            gfx.window,
+            .{
+                .device = gfx.device,
+                .color_target_format = @backingInt(gfx.swapchain_format),
+                .msaa_samples = 0,
+            },
+        );
 
-pub fn deinit(_: *z.Ecs) void {
-    zgui.backend.deinit();
-    zgui.deinit();
-}
+        zgui.io.setConfigFlags(zgui.ConfigFlags{ .dock_enable = true });
+        zgui.getStyle().scaleAllSizes(1);
+
+        return .{};
+    }
+
+    pub fn deinit(_: *Gui) void {
+        zgui.backend.deinit();
+        zgui.deinit();
+    }
+};
 
 /// System: starts an ImGui frame sized to the swapchain. No frame is started
 /// while the window is minimized (zero-sized swapchain).

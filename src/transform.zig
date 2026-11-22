@@ -14,12 +14,6 @@ const zm = @import("zmath");
 
 const z = @import("root.zig");
 
-const TransformModule = @This();
-
-pub fn init(_: TransformModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(TransformModule);
-}
-
 /// Component: local transform, relative to its parent.
 pub const Transform = struct {
     pub const COMPONENT = {};
@@ -95,7 +89,7 @@ pub const Transform = struct {
 /// such as the renderer and camera. The matrix is a full TRS world matrix, so
 /// the accessors decompose it on demand.
 pub const GlobalTransform = struct {
-    /// Marks this struct as a component for `ecs.registerEcs`.
+    /// Marks this struct as a component for `ecs.register`.
     pub const COMPONENT = {};
     const Self = @This();
 

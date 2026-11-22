@@ -4,12 +4,14 @@
 pub const zflecs = @import("zflecs");
 pub const zgui = @import("zgui");
 pub const zmath = @import("zmath");
-pub const zmesh = @import("zmesh");
 pub const zsdl = @import("zsdl");
 pub const zstbi = @import("zstbi");
 
 /// Compile-time embedded SPIR-V shaders
 pub const shaders = @import("shaders");
+
+/// Dynamic module ABI (`z.hot.ModuleDesc`, `z.hot.descriptor`).
+pub const hot = @import("hot/module.zig");
 
 // Ecs
 pub const Ecs = @import("core/ecs.zig");
@@ -23,13 +25,12 @@ pub const System = Ecs.System;
 pub const With = Ecs.With;
 pub const Without = Ecs.Without;
 
-// Modules
+// Engine namespaces (register with `ecs.register(T)`)
 pub const CameraModule = @import("camera.zig");
 pub const DebugModule = @import("debug.zig");
 pub const GfxModule = @import("gfx.zig");
 pub const GuiModule = @import("gui.zig");
 pub const InputModule = @import("input.zig");
-pub const PhaseModule = Ecs.PhaseModule;
 pub const TimeModule = @import("time.zig");
 pub const TransformModule = @import("transform.zig");
 

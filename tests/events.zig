@@ -39,8 +39,8 @@ test "events are delivered and cleared each frame" {
     var ecs = z.Ecs.init(std.testing.allocator);
     defer ecs.deinit();
 
-    _ = ecs.registerModule(z.PhaseModule{})
-        .registerEcs(E);
+    _ = ecs.register(z.Phase)
+        .register(E);
 
     ecs.progress();
 

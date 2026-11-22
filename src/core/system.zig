@@ -7,13 +7,13 @@
 //! stored tuple to the user function.
 //!
 //! The first argument is either a top-level `Phase` value or a custom set enum
-//! value registered through `Ecs.registerPhaseSet`.
+//! value registered through `Ecs.register` (a type with a `PHASE` marker).
 
 const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-const phase_module = @import("phase.zig");
+const phase_mod = @import("phase.zig");
 
 pub fn System(phase_value: anytype, comptime S: anytype) type {
     const param_types = @typeInfo(@TypeOf(S.run)).@"fn".param_types;
@@ -25,13 +25,13 @@ pub fn System(phase_value: anytype, comptime S: anytype) type {
         pub const phase = phase_value;
 
         pub fn phaseEntity(ecs: anytype) zflecs.entity_t {
-            return phase_module.resolve(ecs, phase);
+            return phase_mod.resolve(ecs, phase);
         }
 
         const ArgsTupleType = std.meta.ArgsTuple(@TypeOf(S.run));
         var args_tuple: ArgsTupleType = undefined;
 
-        /// Initializes the argument tuple. Called once by `Ecs.registerEcs`.
+        /// Initializes the argument tuple. Called once by `Ecs.register`.
         pub fn init(ecs: anytype) void {
             inline for (param_types, 0..) |param_type, i| {
                 const pt = param_type orelse continue;

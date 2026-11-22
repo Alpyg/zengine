@@ -4,12 +4,6 @@ const zsdl = @import("zsdl");
 
 const z = @import("root.zig");
 
-const TimeModule = @This();
-
-pub fn init(_: TimeModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(TimeModule);
-}
-
 pub const Time = struct {
     pub const RESOURCE = {};
 

@@ -45,13 +45,28 @@ pub fn build(b: *std.Build) void {
             .{ .name = "shaders", .module = shaders_mod },
         },
     });
-    mod.linkSystemLibrary("sdl3", .{});
-    mod.linkLibrary(zflecs_dep.artifact("flecs"));
-    mod.linkLibrary(zgui_dep.artifact("imgui"));
+    // Dependencies are linked by the final artifacts (executables, tests,
+    // dynamic modules) rather than by the module, so each artifact controls
+    // exactly which native libraries it pulls in.
+    const hot_mod = b.addModule("hot", .{
+        .root_source_file = b.path("src/hot/loader.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "z", .module = mod },
+        },
+    });
+
+    const engine_deps = .{
+        .flecs = zflecs_dep.artifact("flecs"),
+        .imgui = zgui_dep.artifact("imgui"),
+        .hot = hot_mod,
+    };
 
     const unit_tests = b.addTest(.{
         .root_module = mod,
     });
+    linkEngineDeps(unit_tests, engine_deps);
     const run_unit_tests = b.addRunArtifact(unit_tests);
 
     const integration_tests = b.addTest(.{
@@ -64,28 +79,43 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    linkEngineDeps(integration_tests, engine_deps);
     const run_integration_tests = b.addRunArtifact(integration_tests);
 
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_integration_tests.step);
 
-    buildExamples(b, options, mod);
+    buildExamples(b, options, mod, engine_deps);
+}
+
+fn linkEngineDeps(step: *std.Build.Step.Compile, deps: anytype) void {
+    step.root_module.linkSystemLibrary("sdl3", .{});
+    step.root_module.linkLibrary(deps.flecs);
+    step.root_module.linkLibrary(deps.imgui);
 }
 
 pub const Examples = struct {
     pub const sandbox = @import("demos/sandbox/build.zig");
+    pub const hotmod = @import("demos/hotmod/build.zig");
 };
 
-pub fn buildExamples(b: *std.Build, options: anytype, mod: anytype) void {
+pub fn buildExamples(b: *std.Build, options: anytype, mod: anytype, deps: anytype) void {
     const examples = @typeInfo(Examples).@"struct".decl_names;
     inline for (examples) |example| {
-        _ = buildExe(b, @field(Examples, example), options, mod);
+        _ = buildExe(b, @field(Examples, example), options, mod, deps);
     }
 }
 
-fn buildExe(b: *std.Build, example: anytype, options: anytype, mod: anytype) *std.Build.Step.Compile {
-    const exe = example.build(b, options, mod);
+fn buildExe(
+    b: *std.Build,
+    example: anytype,
+    options: anytype,
+    mod: anytype,
+    deps: anytype,
+) *std.Build.Step.Compile {
+    const exe = example.build(b, options, mod, deps);
+    linkEngineDeps(exe, deps);
 
     const install_exe = b.addInstallArtifact(exe, .{});
     b.getInstallStep().dependOn(&install_exe.step);

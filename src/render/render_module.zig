@@ -53,6 +53,8 @@ pub const RenderMeshes = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(ecs: *z.Ecs) RenderMeshes {
+        if (!ecs.hasResource(z.Assets(Mesh)))
+            _ = ecs.insert(z.Assets(Mesh).init(ecs.allocator));
         return .{ .allocator = ecs.allocator };
     }
 
@@ -375,35 +377,28 @@ pub fn DrawMaterial(comptime M: type) type {
     });
 }
 
-/// Registers the mesh/material/renderer resources, the render subphases and
-/// the shared render systems. Must run before modules whose systems use
-/// `RenderPhase` (e.g. `CameraModule`).
-pub fn init(_: RenderModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(RenderPhase);
-
-    if (!ecs.hasResource(z.Assets(Mesh)))
-        _ = ecs.registerResource(z.Assets(Mesh).init(ecs.allocator));
-    if (!ecs.hasResource(RenderMeshes))
-        _ = ecs.registerResource(RenderMeshes.init(ecs));
-    if (!ecs.hasResource(Renderer))
-        _ = ecs.registerResource(Renderer.init(ecs));
-
-    _ = ecs.registerEcs(MeshRef);
-    _ = ecs.registerEcs(UploadSetupMeshes);
-    _ = ecs.registerEcs(BeginScene);
-    _ = ecs.registerEcs(EndScene);
-}
-
-/// Module factory that registers the asset collection for material type `M`,
-/// its `MaterialRef(M)` component and the matching draw system.
+/// Registers the asset collection for material type `M`, its `MaterialRef(M)`
+/// component and the matching draw system.
 pub fn MaterialPlugin(comptime M: type) type {
     return struct {
-        pub fn init(_: @This(), ecs: *z.Ecs) void {
-            if (!ecs.hasResource(z.Assets(M)))
-                _ = ecs.registerResource(z.Assets(M).init(ecs.allocator));
+        /// Ensures the material asset collection exists.
+        pub const Assets = struct {
+            pub const RESOURCE = {};
 
-            _ = ecs.registerEcs(MaterialRef(M));
-            _ = ecs.registerEcs(DrawMaterial(M));
-        }
+            /// Marker so the singleton is a non-zero-sized component.
+            active: bool = true,
+
+            pub fn init(ecs: *z.Ecs) @This() {
+                if (!ecs.hasResource(z.Assets(M)))
+                    _ = ecs.insert(z.Assets(M).init(ecs.allocator));
+                return .{};
+            }
+        };
+
+        /// Component: reference to a material handle.
+        pub const Ref = MaterialRef(M);
+
+        /// System: draws entities using this material.
+        pub const Draw = DrawMaterial(M);
     };
 }

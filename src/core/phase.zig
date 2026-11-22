@@ -2,19 +2,21 @@
 //!
 //! `Phase` is a plain enum of top-level pipeline phases, auto-registered through
 //! its `PHASE` marker. Custom sets use the same marker with a parent:
-//! `pub const PHASE = .{ .parent = Phase.update };`. All phase enums are stored
-//! through the same `PhaseStorage` API; each value maps to a flecs phase entity,
-//! owned per world.
+//! `pub const PHASE = .{ .parent = Phase.update };`. Each value maps to a named
+//! phase entity in the flecs world, shared by every module in that world.
+//!
+//! `Phase.startup` runs once: its systems are disabled after the first
+//! `Ecs.progress`, making it the place for one-time setup without a `done` flag.
 
 const std = @import("std");
 
 const zflecs = @import("zflecs");
 
-const Ecs = @import("ecs.zig");
-
 pub const Phase = enum(u8) {
     pub const PHASE = .{};
 
+    /// Runs once on first frame. Disabled afterwards.
+    startup,
     /// Input polling and asset setup.
     first,
     pre_update,
@@ -31,55 +33,31 @@ pub const Phase = enum(u8) {
     last,
 };
 
-/// Per-world entity table for a phase enum (top-level `Phase` or a custom set).
-/// The caller fills the entities; `get` validates that the table was
-/// initialized for the `Ecs` being used.
-pub fn PhaseStorage(comptime S: type) type {
-    const count = @typeInfo(S).@"enum".field_names.len;
-
-    return struct {
-        pub var entities: [count]zflecs.entity_t = @splat(0);
-        pub var world_id: u64 = 0;
-
-        fn indexOf(comptime value: S) usize {
-            inline for (std.meta.tags(S), 0..) |v, i| {
-                if (v == value) return i;
-            }
-            unreachable;
-        }
-
-        /// Marks the table as belonging to `ecs`. Entities are filled by the
-        /// caller.
-        pub fn begin(ecs: anytype) void {
-            world_id = ecs.id;
-        }
-
-        /// Stores the entity for `value`.
-        pub fn set(comptime value: S, phase_entity: zflecs.entity_t) void {
-            entities[indexOf(value)] = phase_entity;
-        }
-
-        /// Entity for `value`. Panics if the table was not initialized for this
-        /// world.
-        pub fn get(ecs: anytype, comptime value: S) zflecs.entity_t {
-            if (world_id != ecs.id) {
-                @panic("phase '" ++ @typeName(S) ++
-                    "' is not registered for this world; initialize it before use");
-            }
-            return entities[indexOf(value)];
-        }
-    };
+/// Stable, world-level name for one phase value. Phase entities are stored in
+/// the flecs world (not in per-type globals) so that separately compiled
+/// modules - including hot-reloaded shared libraries - resolve the same
+/// entities. The type name enters through a hash so the result is a single
+/// flecs name (no `.' path separators) and is identical in every DSO.
+pub fn phaseName(comptime S: type, comptime value: S) [:0]const u8 {
+    return comptime std.fmt.comptimePrint("phase_{x}_{s}", .{
+        std.hash.Wyhash.hash(0, @typeName(S)),
+        @tagName(value),
+    });
 }
 
-/// Module: registers the default `Phase` enum in the world.
-pub const PhaseModule = struct {
-    pub fn init(_: PhaseModule, ecs: *Ecs) void {
-        _ = ecs.registerEcs(Phase);
+/// Resolves one phase value to its entity. Panics if the phase was not
+/// registered for this world.
+pub inline fn phaseEntity(ecs: anytype, comptime S: type, comptime value: S) zflecs.entity_t {
+    const phase_entity = zflecs.lookup(ecs.world, phaseName(S, value).ptr);
+    if (phase_entity == 0) {
+        @panic("phase '" ++ @typeName(S) ++ "." ++ @tagName(value) ++
+            "' is not registered for this world; initialize it before use");
     }
-};
+    return phase_entity;
+}
 
 pub inline fn entity(ecs: anytype, comptime phase: Phase) zflecs.entity_t {
-    return PhaseStorage(Phase).get(ecs, phase);
+    return phaseEntity(ecs, Phase, phase);
 }
 
 /// Next top-level phase, or null for `last`.
@@ -89,8 +67,7 @@ pub fn next(phase: Phase) ?Phase {
     return if (i >= count) null else @fromBackingInt(@intCast(i));
 }
 
-/// Resolves a top-level phase or a custom set value to its entity, using the
-/// same storage API for both.
+/// Resolves a top-level phase or a custom set value to its entity.
 pub inline fn resolve(ecs: anytype, comptime phase: anytype) zflecs.entity_t {
-    return PhaseStorage(@TypeOf(phase)).get(ecs, phase);
+    return phaseEntity(ecs, @TypeOf(phase), phase);
 }

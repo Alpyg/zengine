@@ -14,12 +14,6 @@ pub const Mouse = enum(u8) { left = 1, middle = 2, right = 3, x1 = 4, x2 = 5 };
 
 const z = @import("root.zig");
 
-const InputModule = @This();
-
-pub fn init(_: InputModule, ecs: *z.Ecs) void {
-    _ = ecs.registerEcs(InputModule);
-}
-
 pub const Input = struct {
     pub const RESOURCE = {};
 
@@ -35,9 +29,9 @@ pub const Input = struct {
     mouse_delta: [2]f32 = undefined,
 
     pub fn init(ecs: *z.Ecs) Input {
-        _ = ecs.registerEvent(z.Event(KeyEvent))
-            .registerEvent(z.Event(MouseButtonEvent))
-            .registerEvent(z.Event(MouseMotionEvent));
+        _ = ecs.insert(z.Event(KeyEvent).init(ecs))
+            .insert(z.Event(MouseButtonEvent).init(ecs))
+            .insert(z.Event(MouseMotionEvent).init(ecs));
 
         return Input{
             .key_states = std.AutoHashMap(Key, InputState).init(ecs.allocator),

@@ -11,17 +11,17 @@ pub fn main(init: std.process.Init) !void {
     var app = z.Ecs.init(allocator);
     defer app.deinit();
 
-    _ = app.registerModule(z.PhaseModule{})
-        .registerModule(z.GfxModule{})
-        .registerModule(z.TimeModule{})
-        .registerModule(z.GuiModule{})
-        .registerModule(z.InputModule{})
-        .registerModule(z.TransformModule{})
-        .registerModule(z.RenderModule{})
-        .registerModule(z.DebugModule{})
-        .registerModule(z.CameraModule{})
-        .registerModule(z.MaterialPlugin(TestMaterial){})
-        .registerEcs(@This());
+    _ = app.register(z.Phase)
+        .register(z.GfxModule)
+        .register(z.TimeModule)
+        .register(z.GuiModule)
+        .register(z.InputModule)
+        .register(z.TransformModule)
+        .register(z.RenderModule)
+        .register(z.DebugModule)
+        .register(z.CameraModule)
+        .register(z.MaterialPlugin(TestMaterial))
+        .register(@This());
 
     app.run();
 }
@@ -31,17 +31,13 @@ pub const TestMaterial = z.Material(
     struct { object_to_clip: zm.Mat },
 );
 
-pub const Setup = z.System(z.Phase.first, struct {
-    var done: bool = false;
-
+pub const Setup = z.System(z.Phase.startup, struct {
     pub fn run(
         ecs: *z.Ecs,
         gfx: z.Resource(*z.Gfx),
         materials: z.Resource(*z.Assets(TestMaterial)),
         meshes: z.Resource(*z.Assets(z.Mesh)),
     ) void {
-        if (done) return;
-
         const player = ecs.new("Player");
         _ = ecs.add(player, .{
             z.Name{ .value = "Player" },
@@ -84,7 +80,5 @@ pub const Setup = z.System(z.Phase.first, struct {
             z.Transform{},
             z.GlobalTransform{},
         });
-
-        done = true;
     }
 });
