@@ -1,8 +1,9 @@
 //! Render module: GPU mesh cache, offscreen scene target, scene pass systems
 //! and the per-material draw systems.
 //!
-//! `RenderModule` registers the shared resources and the upload/pass systems;
-//! `MaterialPlugin(M)` adds the assets and draw system for one material type.
+//! The `RenderModule` namespace registers the shared resources and the
+//! upload/pass systems; each `Material(S, U).Module` adds the assets and draw
+//! system for one material type.
 
 const std = @import("std");
 
@@ -375,30 +376,4 @@ pub fn DrawMaterial(comptime M: type) type {
             }
         }
     });
-}
-
-/// Registers the asset collection for material type `M`, its `MaterialRef(M)`
-/// component and the matching draw system.
-pub fn MaterialPlugin(comptime M: type) type {
-    return struct {
-        /// Ensures the material asset collection exists.
-        pub const Assets = struct {
-            pub const RESOURCE = {};
-
-            /// Marker so the singleton is a non-zero-sized component.
-            active: bool = true,
-
-            pub fn init(ecs: *z.Ecs) @This() {
-                if (!ecs.hasResource(z.Assets(M)))
-                    _ = ecs.insert(z.Assets(M).init(ecs.allocator));
-                return .{};
-            }
-        };
-
-        /// Component: reference to a material handle.
-        pub const Ref = MaterialRef(M);
-
-        /// System: draws entities using this material.
-        pub const Draw = DrawMaterial(M);
-    };
 }

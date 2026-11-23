@@ -8,6 +8,7 @@ const std = @import("std");
 const zsdl = @import("zsdl");
 
 const z = @import("../root.zig");
+const render_module = @import("render_module.zig");
 
 /// A material: a graphics pipeline + the per-draw resources (uniforms) it pushes.
 ///
@@ -15,14 +16,12 @@ const z = @import("../root.zig");
 ///   expose `spv`, `vertex`, `fragment`, `uniform_block`, `bindings`,
 ///   `vertex_inputs`, `vertex_stride` and `Vertex`, which the build-time Slang
 ///   reflection generates.
-/// - `T`: struct of uniforms pushed for each draw. Validated against the
-///   reflected uniform block at comptime.
 ///
-/// The GPU vertex layout is taken from the shader's reflected vertex inputs, so
-/// no separate vertex-layout argument is needed.
-pub fn Material(comptime S: type, comptime T: type) type {
-    const uniforms_info = @typeInfo(T).@"struct";
-
+/// The uniform struct is generated from `S.uniform_block`, so field names and
+/// layout come from the shader itself. The GPU vertex layout is taken from the
+/// shader's reflected vertex inputs, so no separate vertex-layout argument is
+/// needed.
+pub fn Material(comptime S: type) type {
     comptime {
         if (!@hasDecl(S, "spv") or !@hasDecl(S, "vertex") or
             !@hasDecl(S, "fragment") or !@hasDecl(S, "uniform_block") or
@@ -34,49 +33,9 @@ pub fn Material(comptime S: type, comptime T: type) type {
         if (S.vertex.num_uniform_buffers > 1 or S.fragment.num_uniform_buffers > 1) {
             @compileError("Material supports at most one uniform buffer per stage (push slot 0)");
         }
-
-        if (S.uniform_block.fields.len != uniforms_info.field_names.len) {
-            @compileError("Material uniform struct field count does not match the shader's reflected uniform block");
-        }
     }
 
-    // --- comptime validation of the uniform struct against reflection ---
-    comptime {
-        var offset: u32 = 0;
-        for (uniforms_info.field_names, uniforms_info.field_types, 0..) |name, FT, i| {
-            const reflected = S.uniform_block.fields[i];
-
-            if (!std.mem.eql(u8, reflected.name, name)) {
-                @compileError("Material uniform field '" ++ name ++
-                    "' does not match shader reflection (expected '" ++ reflected.name ++ "')");
-            }
-
-            const aligned = std.mem.alignForward(u32, offset, @alignOf(FT));
-            if (aligned != offset) {
-                @compileError("Material uniform field '" ++ name ++
-                    "' is not naturally aligned in the uniform block");
-            }
-            if (reflected.offset != offset) {
-                @compileError("Material uniform field '" ++ name ++
-                    "' offset does not match shader reflection");
-            }
-            if (reflected.size != @sizeOf(FT)) {
-                @compileError("Material uniform field '" ++ name ++
-                    "' size does not match shader reflection");
-            }
-
-            validateFieldType(name, FT, reflected);
-
-            offset += @sizeOf(FT);
-        }
-
-        if (S.uniform_block.size != offset) {
-            @compileError("Material uniform struct size does not match the shader's reflected block size");
-        }
-        if (offset > 65536) {
-            @compileError("Material uniform block exceeds 64 KiB");
-        }
-    }
+    const UniformsType = uniformStruct(S);
 
     comptime {
         var uniform_buffers: u32 = 0;
@@ -121,8 +80,33 @@ pub fn Material(comptime S: type, comptime T: type) type {
     return struct {
         const Self = @This();
 
-        pub const Uniforms = T;
+        pub const Uniforms = UniformsType;
         pub const vertex_stride = S.vertex_stride;
+
+        /// Namespace registered with `ecs.register(...)`: the material asset
+        /// pool, the `MaterialRef` component and the draw system for this
+        /// material type.
+        pub const Module = struct {
+            /// Ensures the material asset collection exists.
+            pub const Assets = struct {
+                pub const RESOURCE = {};
+
+                /// Marker so the singleton is a non-zero-sized component.
+                active: bool = true,
+
+                pub fn init(ecs: *z.Ecs) @This() {
+                    if (!ecs.hasResource(z.Assets(Self)))
+                        _ = ecs.insert(z.Assets(Self).init(ecs.allocator));
+                    return .{};
+                }
+            };
+
+            /// Component: reference to a material handle.
+            pub const Ref = render_module.MaterialRef(Self);
+
+            /// System: draws entities using this material.
+            pub const Draw = render_module.DrawMaterial(Self);
+        };
 
         /// Graphics pipeline created from the shader pair and vertex layout.
         pipeline: *zsdl.GPUGraphicsPipeline,
@@ -130,14 +114,14 @@ pub fn Material(comptime S: type, comptime T: type) type {
         fragment_shader: *zsdl.GPUShader,
 
         /// CPU-side mirror of the pushed uniform data.
-        uniforms: T,
+        uniforms: Uniforms,
 
         /// Device used to release the pipeline and shaders.
         device: *zsdl.GPUDevice,
 
-        /// Build the pipeline. The vertex layout is derived from `V` at comptime;
-        /// the only runtime input is the uniform values.
-        pub fn init(gfx: *z.Gfx, material: T) !Self {
+        /// Build the pipeline. The vertex layout is derived from the shader's
+        /// reflection; the only runtime input is the uniform values.
+        pub fn init(gfx: *z.Gfx, material: Uniforms) !Self {
             const vs = try zsdl.createGPUShader(gfx.device, &.{
                 .stage = .vertex,
                 .entrypoint = "vertex",
@@ -252,7 +236,7 @@ pub fn Material(comptime S: type, comptime T: type) type {
 
         pub fn pushUniforms(self: *const Self, cmd: *zsdl.GPUCommandBuffer) void {
             const bytes: *const anyopaque = @ptrCast(&self.uniforms);
-            const len: u32 = @intCast(@sizeOf(T));
+            const len: u32 = @intCast(@sizeOf(Uniforms));
 
             if (S.vertex.num_uniform_buffers > 0)
                 zsdl.pushGPUVertexUniformData(cmd, 0, bytes, len);
@@ -267,69 +251,106 @@ pub fn Material(comptime S: type, comptime T: type) type {
     };
 }
 
-/// Best-effort check that a Zig uniform field matches the reflected Slang type.
-fn validateFieldType(comptime name: []const u8, comptime FT: type, comptime reflected: anytype) void {
-    const info = @typeInfo(FT);
+/// Builds the CPU-side uniform struct from the shader's reflected block: field
+/// names, types and offsets are all taken from Slang. Layouts that need padding
+/// beyond natural field alignment are rejected for now.
+fn uniformStruct(comptime S: type) type {
+    const fields = S.uniform_block.fields;
+    if (fields.len == 0) return struct {};
 
-    if (info == .array) {
-        const child = info.array.child;
-        if (@typeInfo(child) == .vector) {
-            const vec = @typeInfo(child).vector;
-            if (!std.mem.eql(u8, reflected.kind, "matrix")) {
-                @compileError("Material uniform field '" ++ name ++ "' is a matrix, but the shader reflects '" ++ reflected.kind ++ "'");
+    var names: [fields.len][:0]const u8 = undefined;
+    var types: [fields.len]type = undefined;
+    var attrs: [fields.len]std.builtin.Type.Struct.FieldAttributes = undefined;
+
+    var offset: usize = 0;
+    inline for (fields, 0..) |field, i| {
+        const FT = uniformFieldType(field);
+
+        if (field.offset != offset) {
+            @compileError("Uniform field '" ++ field.name ++
+                "' needs explicit padding, which Material does not support yet");
+        }
+        if (field.size != @sizeOf(FT)) {
+            @compileError("Uniform field '" ++ field.name ++
+                "' reflected size does not match the generated Zig type");
+        }
+
+        names[i] = std.fmt.comptimePrint("{s}", .{field.name});
+        types[i] = FT;
+        attrs[i] = .{ .default_value_ptr = zeroDefaultPtr(FT) };
+        offset += @sizeOf(FT);
+    }
+
+    if (offset != S.uniform_block.size) {
+        @compileError("Uniform block size does not match its reflected fields");
+    }
+    if (offset > 65536) {
+        @compileError("Material uniform block exceeds 64 KiB");
+    }
+
+    const U = @Struct(.auto, null, &names, &types, &attrs);
+
+    comptime {
+        for (fields, 0..) |field, i| {
+            if (@offsetOf(U, names[i]) != field.offset) {
+                @compileError("Generated uniform field '" ++ field.name ++
+                    "' does not land at its reflected offset");
             }
-            if (reflected.rows != info.array.len or reflected.columns != vec.len) {
-                @compileError("Material uniform field '" ++ name ++ "' matrix dimensions do not match shader reflection");
-            }
-            if (expectedScalarName(vec.child)) |scalar| {
-                if (!std.mem.eql(u8, reflected.scalar, scalar)) {
-                    @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
-                }
-            }
-            return;
         }
     }
 
-    if (info == .vector) {
-        if (!std.mem.eql(u8, reflected.kind, "vector")) {
-            @compileError("Material uniform field '" ++ name ++ "' is a vector, but the shader reflects '" ++ reflected.kind ++ "'");
-        }
-        if (expectedScalarName(info.vector.child)) |scalar| {
-            if (!std.mem.eql(u8, reflected.scalar, scalar)) {
-                @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
-            }
-        }
-        return;
-    }
-
-    if (expectedScalarName(FT)) |scalar| {
-        if (!std.mem.eql(u8, reflected.kind, "scalar")) {
-            @compileError("Material uniform field '" ++ name ++ "' is a scalar, but the shader reflects '" ++ reflected.kind ++ "'");
-        }
-        if (!std.mem.eql(u8, reflected.scalar, scalar)) {
-            @compileError("Material uniform field '" ++ name ++ "' scalar type does not match shader reflection");
-        }
-    }
+    return U;
 }
 
-fn expectedScalarName(comptime T: type) ?[]const u8 {
-    return switch (@typeInfo(T)) {
-        .float => |f| switch (f.bits) {
-            16 => "float16",
-            32 => "float32",
-            64 => "float64",
-            else => null,
-        },
-        .int => |i| switch (i.bits) {
-            8 => if (i.signedness == .signed) "int8" else "uint8",
-            16 => if (i.signedness == .signed) "int16" else "uint16",
-            32 => if (i.signedness == .signed) "int32" else "uint32",
-            64 => if (i.signedness == .signed) "int64" else "uint64",
-            else => null,
-        },
-        .bool => "bool",
-        else => null,
-    };
+fn uniformFieldType(comptime field: anytype) type {
+    const Scalar = uniformScalarType(field.scalar);
+
+    if (std.mem.eql(u8, field.kind, "scalar")) return Scalar;
+
+    if (std.mem.eql(u8, field.kind, "vector")) {
+        const n: usize = @intCast(field.columns);
+        if (n < 1 or n > 4) {
+            @compileError("Material does not support uniform vectors wider than 4 components");
+        }
+        const V = @Vector(n, Scalar);
+        return if (@sizeOf(V) == field.size) V else [n]Scalar;
+    }
+
+    if (std.mem.eql(u8, field.kind, "matrix")) {
+        const rows: usize = @intCast(field.rows);
+        const cols: usize = @intCast(field.columns);
+        if (rows < 1 or rows > 4 or cols < 1 or cols > 4) {
+            @compileError("Material does not support uniform matrices larger than 4x4");
+        }
+        const Row = @Vector(cols, Scalar);
+        if (rows * @sizeOf(Row) == field.size) return [rows]Row;
+        return [rows][cols]Scalar;
+    }
+
+    @compileError("Material does not support reflected uniform field kind '" ++ field.kind ++ "'");
+}
+
+fn uniformScalarType(comptime name: []const u8) type {
+    if (std.mem.eql(u8, name, "bool")) return bool;
+    if (std.mem.eql(u8, name, "float16")) return f16;
+    if (std.mem.eql(u8, name, "float32")) return f32;
+    if (std.mem.eql(u8, name, "float64")) return f64;
+    if (std.mem.eql(u8, name, "int8")) return i8;
+    if (std.mem.eql(u8, name, "int16")) return i16;
+    if (std.mem.eql(u8, name, "int32")) return i32;
+    if (std.mem.eql(u8, name, "int64")) return i64;
+    if (std.mem.eql(u8, name, "uint8")) return u8;
+    if (std.mem.eql(u8, name, "uint16")) return u16;
+    if (std.mem.eql(u8, name, "uint32")) return u32;
+    if (std.mem.eql(u8, name, "uint64")) return u64;
+    @compileError("Material does not support reflected uniform scalar '" ++ name ++ "'");
+}
+
+/// Default value for a generated field, so callers can supply only the uniforms
+/// they care about at material creation.
+fn zeroDefaultPtr(comptime T: type) ?*const anyopaque {
+    const value: T = std.mem.zeroes(T);
+    return @ptrCast(&value);
 }
 
 fn parseVertexFormat(comptime name: []const u8) zsdl.GPUVertexElementFormat {
@@ -346,4 +367,30 @@ fn parseVertexFormat(comptime name: []const u8) zsdl.GPUVertexElementFormat {
     if (std.mem.eql(u8, name, "uint3")) return .uint3;
     if (std.mem.eql(u8, name, "uint4")) return .uint4;
     @compileError("Unsupported reflected vertex format: " ++ name);
+}
+
+test "uniform struct is generated from shader reflection" {
+    const S = struct {
+        pub const uniform_block = .{
+            .name = "Uniforms",
+            .size = 68,
+            .fields = .{
+                .{ .name = "object_to_clip", .offset = 0, .size = 64, .kind = "matrix", .scalar = "float32", .rows = 4, .columns = 4, .elements = 1 },
+                .{ .name = "tint", .offset = 64, .size = 4, .kind = "scalar", .scalar = "float32", .rows = 1, .columns = 1, .elements = 1 },
+            },
+        };
+    };
+
+    const U = uniformStruct(S);
+
+    comptime {
+        std.debug.assert(@sizeOf(U) == 68);
+        std.debug.assert(@offsetOf(U, "object_to_clip") == 0);
+        std.debug.assert(@offsetOf(U, "tint") == 64);
+        std.debug.assert(@FieldType(U, "object_to_clip") == [4]@Vector(4, f32));
+        std.debug.assert(@FieldType(U, "tint") == f32);
+    }
+
+    const value: U = .{ .object_to_clip = undefined, .tint = 1.0 };
+    try std.testing.expectEqual(@as(f32, 1.0), value.tint);
 }

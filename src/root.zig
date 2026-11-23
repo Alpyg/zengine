@@ -49,7 +49,6 @@ pub const Material = render.material.Material;
 pub const GpuMesh = render.mesh.GpuMesh;
 pub const Mesh = render.mesh.Mesh;
 pub const MeshFor = render.mesh.MeshFor;
-pub const MaterialPlugin = render.render_module.MaterialPlugin;
 pub const MaterialRef = render.render_module.MaterialRef;
 pub const MeshRef = render.render_module.MeshRef;
 pub const RenderMeshes = render.render_module.RenderMeshes;

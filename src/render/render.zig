@@ -11,9 +11,8 @@ pub const GpuMesh = mesh.GpuMesh;
 pub const Mesh = mesh.Mesh;
 pub const MeshFor = mesh.MeshFor;
 
-/// Render resources, systems and per-material plugins (see `render_module.zig`).
+/// Render resources, systems and per-material draw systems (see `render_module.zig`).
 pub const render_module = @import("render_module.zig");
-pub const MaterialPlugin = render_module.MaterialPlugin;
 pub const MaterialRef = render_module.MaterialRef;
 pub const MeshRef = render_module.MeshRef;
 pub const RenderMeshes = render_module.RenderMeshes;

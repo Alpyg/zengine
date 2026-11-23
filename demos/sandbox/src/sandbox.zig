@@ -20,16 +20,12 @@ pub fn main(init: std.process.Init) !void {
         .register(z.RenderModule)
         .register(z.DebugModule)
         .register(z.CameraModule)
-        .register(z.MaterialPlugin(TestMaterial))
         .register(@This());
 
     app.run();
 }
 
-pub const TestMaterial = z.Material(
-    z.shaders.shader,
-    struct { object_to_clip: zm.Mat },
-);
+pub const TestMaterial = z.Material(z.shaders.shader);
 
 pub const Setup = z.System(z.Phase.startup, struct {
     pub fn run(
@@ -51,7 +47,7 @@ pub const Setup = z.System(z.Phase.startup, struct {
             z.Camera{},
         });
 
-        const material = TestMaterial.init(gfx, .{ .object_to_clip = zm.identity() }) catch |err|
+        const material = TestMaterial.init(gfx, .{}) catch |err|
             std.debug.panic("material init failed: {s}", .{@errorName(err)});
         const material_handle = materials.add(material) catch @panic("OOM");
 

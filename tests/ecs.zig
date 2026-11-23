@@ -2,6 +2,7 @@ const std = @import("std");
 const z = @import("z");
 
 var scope_deinit_calls: u32 = 0;
+var deinit_calls: u32 = 0;
 
 test "Ecs.register recurses through namespaces and runs resource deinit" {
     const State = struct {
@@ -158,4 +159,39 @@ test "resources persist across a hot reload teardown" {
     // Final unload removes it.
     ecs.deinitModule(second, .unload);
     try std.testing.expect(!ecs.hasResource(Res));
+}
+
+test "registering a namespace twice does not duplicate systems" {
+    const E = struct {
+        pub const Counter = struct {
+            pub const RESOURCE = {};
+            value: u32 = 0,
+
+            pub fn deinit(_: *@This()) void {
+                deinit_calls += 1;
+            }
+        };
+
+        pub const Bump = z.System(z.Phase.update, struct {
+            pub fn run(counter: z.Resource(*Counter)) void {
+                counter.value += 1;
+            }
+        });
+    };
+
+    deinit_calls = 0;
+    var ecs = z.Ecs.init(std.testing.allocator);
+
+    _ = ecs.register(z.Phase);
+    _ = ecs.register(E);
+    _ = ecs.register(E);
+
+    ecs.progress();
+    try std.testing.expectEqual(
+        @as(u32, 1),
+        z.zflecs.singleton_get(ecs.world, E.Counter).?.value,
+    );
+
+    ecs.deinit();
+    try std.testing.expectEqual(@as(u32, 1), deinit_calls);
 }

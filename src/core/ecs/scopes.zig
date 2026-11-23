@@ -65,19 +65,36 @@ pub fn deinit(self: *Ecs) void {
 }
 
 pub fn addDeinit(self: *Ecs, f: *const fn (*Ecs) void) void {
-    currentEntry(self).deinit_fns.append(self.allocator, f) catch @panic("oom");
+    addUnique(&currentEntry(self).deinit_fns, self.allocator, f);
 }
 
 pub fn addSystem(self: *Ecs, entity: zflecs.entity_t) void {
-    currentEntry(self).systems.append(self.allocator, entity) catch @panic("oom");
+    const systems = &currentEntry(self).systems;
+    for (systems.items) |existing| {
+        if (existing == entity) return;
+    }
+    systems.append(self.allocator, entity) catch @panic("oom");
 }
 
 pub fn addRemoval(self: *Ecs, f: *const fn (*Ecs) void) void {
-    currentEntry(self).removals.append(self.allocator, f) catch @panic("oom");
+    addUnique(&currentEntry(self).removals, self.allocator, f);
 }
 
 pub fn addResourceDeinit(self: *Ecs, f: *const fn (*Ecs) void) void {
-    currentEntry(self).resource_deinit_fns.append(self.allocator, f) catch @panic("oom");
+    addUnique(&currentEntry(self).resource_deinit_fns, self.allocator, f);
+}
+
+/// Appends `f` unless the same thunk is already tracked by this scope. Makes
+/// registering the same namespace twice in one scope harmless.
+fn addUnique(
+    list: *std.ArrayListUnmanaged(*const fn (*Ecs) void),
+    allocator: std.mem.Allocator,
+    f: *const fn (*Ecs) void,
+) void {
+    for (list.items) |existing| {
+        if (existing == f) return;
+    }
+    list.append(allocator, f) catch @panic("oom");
 }
 
 fn currentEntry(self: *Ecs) *Entry {

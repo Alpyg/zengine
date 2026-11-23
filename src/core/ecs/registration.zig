@@ -39,6 +39,15 @@ pub const Layouts = struct {
 /// Adds one system to the world and initializes its argument tuple.
 pub fn registerSystem(self: *Ecs, comptime T: type) void {
     if (self.layouts.conflict) return;
+
+    // System names are stable, so a type reachable from two namespaces (for
+    // example `M.Module` and the namespace declaring `M`) must not be
+    // registered twice: flecs rejects the duplicate entity name.
+    if (zflecs.lookup(self.world, systemName(T).ptr) != 0) {
+        std.log.debug("System `{s}` is already registered; skipping", .{@typeName(T)});
+        return;
+    }
+
     const phase = T.phaseEntity(self);
     const entity = zflecs.ADD_SYSTEM(self.world, systemName(T), phase, T.run);
 
