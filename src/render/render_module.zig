@@ -19,8 +19,13 @@ pub const GpuMesh = z.GpuMesh;
 pub const RenderPhase = enum {
     pub const PHASE = .{ .parent = z.Phase.render };
 
+    /// GPU uploads that must happen before a render pass is open.
+    prepare,
     /// Opens the scene render pass.
     begin,
+    /// Background draws (for example a camera passthrough quad) that cover the
+    /// cleared target before opaque geometry.
+    background,
     /// Opaque geometry draws.
     render,
     /// Blended draws.
@@ -87,6 +92,11 @@ pub const Renderer = struct {
     pub const RESOURCE = {};
 
     pass: ?*zsdl.GPURenderPass = null,
+
+    /// When true the scene pass renders straight into the swapchain and no
+    /// offscreen color target is created. Used by fullscreen apps such as
+    /// Android AR, where the editor viewport is not needed.
+    direct: bool = false,
 
     /// Offscreen color target that ImGui displays inside the scene viewport.
     scene_color: ?*zsdl.GPUTexture = null,
@@ -166,6 +176,39 @@ pub const Renderer = struct {
         return true;
     }
 
+    /// Creates or recreates the depth target used by a direct-to-swapchain
+    /// pass. `scene_w`/`scene_h` track the target size.
+    pub fn ensureDepthTarget(self: *Renderer, gfx: *z.Gfx, width: u32, height: u32) bool {
+        if (width == 0 or height == 0) return false;
+        if (self.scene_depth != null and self.scene_w == width and self.scene_h == height) {
+            return true;
+        }
+
+        if (self.scene_depth) |texture| {
+            zsdl.releaseGPUTexture(gfx.device, texture);
+            self.scene_depth = null;
+        }
+
+        const depth = zsdl.createGPUTexture(gfx.device, &.{
+            .type = .texturetype_2d,
+            .format = z.Gfx.depth_format,
+            .usage = .{ .depth_stencil_target = true },
+            .width = width,
+            .height = height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+            .sample_count = .samplecount_1,
+        }) catch {
+            std.log.err("createGPUTexture(scene depth) failed: {s}", .{zsdl.getError() orelse "unknown"});
+            return false;
+        };
+
+        self.scene_depth = depth;
+        self.scene_w = width;
+        self.scene_h = height;
+        return true;
+    }
+
     /// Creates or recreates the offscreen color/depth targets when the size
     /// changes. Returns false on allocation failure or a zero-sized viewport.
     pub fn ensureSceneTarget(self: *Renderer, gfx: *z.Gfx, width: u32, height: u32) bool {
@@ -234,13 +277,19 @@ pub const Renderer = struct {
         return true;
     }
 
-    /// Begins the scene render pass into the offscreen targets. Returns false
-    /// if the targets or command buffer are not ready.
+    /// Begins the scene render pass. In direct mode the target is the swapchain
+    /// texture; otherwise it is the offscreen target used by the editor.
+    /// Returns false if the targets or command buffer are not ready.
     pub fn begin(self: *Renderer, gfx: *z.Gfx) bool {
-        const color = self.scene_color orelse return false;
+        const cmd = gfx.cmd orelse return false;
+
+        const color = if (self.direct) blk: {
+            if (!self.ensureDepthTarget(gfx, gfx.swapchain_w, gfx.swapchain_h)) return false;
+            break :blk gfx.swapchain_texture orelse return false;
+        } else self.scene_color orelse return false;
+
         const depth = self.scene_depth orelse return false;
         if (self.scene_w == 0 or self.scene_h == 0) return false;
-        const cmd = gfx.cmd orelse return false;
 
         const color_targets = [_]zsdl.GPUColorTargetInfo{.{
             .texture = color,
@@ -299,6 +348,21 @@ pub const UploadSetupMeshes = z.System(z.Phase.pre_render, struct {
     }
 });
 
+/// System: in direct mode, publishes the swapchain size before camera matrices
+/// are calculated and makes sure the depth target matches.
+pub const PrepareTarget = z.System(z.Phase.pre_render, struct {
+    pub fn run(
+        gfx: z.Resource(*z.Gfx),
+        renderer: z.Resource(*Renderer),
+    ) void {
+        if (!renderer.direct) return;
+        if (gfx.swapchain_w == 0 or gfx.swapchain_h == 0) return;
+        renderer.scene_w = gfx.swapchain_w;
+        renderer.scene_h = gfx.swapchain_h;
+        _ = renderer.ensureDepthTarget(gfx, gfx.swapchain_w, gfx.swapchain_h);
+    }
+});
+
 /// System: opens the scene render pass into the offscreen target.
 pub const BeginScene = z.System(RenderPhase.begin, struct {
     pub fn run(
@@ -354,6 +418,10 @@ pub fn DrawMaterial(comptime M: type) type {
                 if (@hasField(M.Uniforms, "object_to_clip")) {
                     var uniforms = materials.pool.getColumnAssumeLive(material_ref.handle, .uniforms);
                     @field(uniforms, "object_to_clip") = object_to_clip;
+                    if (@hasField(M.Uniforms, "object_to_world")) {
+                        // Column-vector convention matches `object_to_clip`.
+                        @field(uniforms, "object_to_world") = zm.transpose(transform.transform);
+                    }
                     materials.pool.setColumnAssumeLive(material_ref.handle, .uniforms, uniforms);
                 }
 

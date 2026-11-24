@@ -8,20 +8,32 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     };
 
-    const zsdl_dep = b.dependency("zsdl", .{});
-    const zflecs_dep = b.dependency("zflecs", .{});
+    const zsdl_dep = b.dependency("zsdl", options);
+    const zflecs_dep = b.dependency("zflecs", options);
     const zgui_dep = b.dependency("zgui", .{
+        .target = options.target,
+        .optimize = options.optimize,
         .backend = .sdl3_gpu,
         .shared = false,
         .with_implot = true,
         .with_node_editor = true,
     });
-    const zmath_dep = b.dependency("zmath", .{});
-    const zpool_dep = b.dependency("zpool", .{});
-    const zstbi_dep = b.dependency("zstbi", .{});
+    const zmath_dep = b.dependency("zmath", options);
+    const zpool_dep = b.dependency("zpool", options);
+    const zstbi_dep = b.dependency("zstbi", options);
 
-    // Directory holding the `.slang` shaders. Each file is compiled to SPIR-V
-    // at build time and exposed as a field on the generated `shaders` module.
+    const flecs = zflecs_dep.artifact("flecs");
+    const imgui = zgui_dep.artifact("imgui");
+    if (options.target.result.abi == .android) {
+        const libc_file = androidLibCFile(b);
+        flecs.setLibCFile(libc_file);
+        flecs.root_module.pic = true;
+        imgui.setLibCFile(libc_file);
+        imgui.root_module.pic = true;
+    }
+    b.getInstallStep().dependOn(&b.addInstallArtifact(flecs, .{}).step);
+    b.getInstallStep().dependOn(&b.addInstallArtifact(imgui, .{}).step);
+
     const shaders_path = b.option(
         []const u8,
         "shaders_path",
@@ -30,24 +42,22 @@ pub fn build(b: *std.Build) void {
 
     const shaders_mod = buildShaders(b, shaders_path, options);
 
+    var root_imports: std.ArrayList(std.Build.Module.Import) = .empty;
+    root_imports.append(b.allocator, .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "zflecs", .module = zflecs_dep.module("root") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "zgui", .module = zgui_dep.module("root") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "zmath", .module = zmath_dep.module("root") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "zpool", .module = zpool_dep.module("root") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "zstbi", .module = zstbi_dep.module("root") }) catch @panic("oom");
+    root_imports.append(b.allocator, .{ .name = "shaders", .module = shaders_mod }) catch @panic("oom");
+
     const mod = b.addModule("root", .{
         .root_source_file = b.path("src/root.zig"),
         .target = options.target,
         .optimize = options.optimize,
         .strip = false,
-        .imports = &.{
-            .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") },
-            .{ .name = "zflecs", .module = zflecs_dep.module("root") },
-            .{ .name = "zgui", .module = zgui_dep.module("root") },
-            .{ .name = "zmath", .module = zmath_dep.module("root") },
-            .{ .name = "zpool", .module = zpool_dep.module("root") },
-            .{ .name = "zstbi", .module = zstbi_dep.module("root") },
-            .{ .name = "shaders", .module = shaders_mod },
-        },
+        .imports = root_imports.items,
     });
-    // Dependencies are linked by the final artifacts (executables, tests,
-    // dynamic modules) rather than by the module, so each artifact controls
-    // exactly which native libraries it pulls in.
     const hot_mod = b.addModule("hot", .{
         .root_source_file = b.path("src/hot/loader.zig"),
         .target = options.target,
@@ -58,13 +68,21 @@ pub fn build(b: *std.Build) void {
     });
 
     const engine_deps = .{
-        .flecs = zflecs_dep.artifact("flecs"),
-        .imgui = zgui_dep.artifact("imgui"),
+        .flecs = flecs,
+        .imgui = imgui,
         .hot = hot_mod,
     };
 
+    const test_mod = b.addModule("root_test", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .strip = false,
+        .imports = root_imports.items,
+    });
+
     const unit_tests = b.addTest(.{
-        .root_module = mod,
+        .root_module = test_mod,
     });
     linkEngineDeps(unit_tests, engine_deps);
     const run_unit_tests = b.addRunArtifact(unit_tests);
@@ -93,6 +111,26 @@ fn linkEngineDeps(step: *std.Build.Step.Compile, deps: anytype) void {
     step.root_module.linkSystemLibrary("sdl3", .{});
     step.root_module.linkLibrary(deps.flecs);
     step.root_module.linkLibrary(deps.imgui);
+}
+
+fn androidLibCFile(b: *std.Build) std.Build.LazyPath {
+    const ndk = b.graph.environ_map.get("ANDROID_NDK_ROOT") orelse
+        @panic("ANDROID_NDK_ROOT is not set; build Android targets inside the devenv shell");
+    const sysroot = b.pathJoin(&.{
+        ndk,
+        "toolchains/llvm/prebuilt/linux-x86_64/sysroot",
+    });
+    const libdir = b.pathJoin(&.{ sysroot, "usr/lib/aarch64-linux-android/26" });
+    return b.addWriteFiles().add("zengine-android-libc.txt", b.fmt(
+        "include_dir={s}/usr/include\n" ++
+            "sys_include_dir={s}/usr/include/aarch64-linux-android\n" ++
+            "cc_dir={s}\n" ++
+            "crt_dir={s}\n" ++
+            "msvc_lib_dir=\n" ++
+            "kernel32_lib_dir=\n" ++
+            "darwin_sdk_dir=\n",
+        .{ sysroot, sysroot, libdir, libdir },
+    ));
 }
 
 pub const Examples = struct {
@@ -128,8 +166,6 @@ fn buildExe(
     return exe;
 }
 
-/// Compiles every `.slang` file in `shaders_path` to SPIR-V and returns a
-/// module exposing each one as `pub const <file_stem> = @embedFile(...)`.
 fn buildShaders(b: *std.Build, shaders_path: []const u8, options: anytype) *std.Build.Module {
     const zslang_dep = b.dependency("zslang", .{
         .target = b.graph.host,
@@ -147,8 +183,9 @@ fn buildShaders(b: *std.Build, shaders_path: []const u8, options: anytype) *std.
             },
         }),
     });
+    b.getInstallStep().dependOn(&b.addInstallArtifact(compiler, .{}).step);
 
-    var dir = std.Io.Dir.cwd().openDir(b.graph.io, shaders_path, .{ .iterate = true }) catch |err| {
+    var dir = b.root.openDir(b.graph.io, shaders_path, .{ .iterate = true }) catch |err| {
         std.debug.panic("failed to open shader directory '{s}': {s}", .{ shaders_path, @errorName(err) });
     };
     defer dir.close(b.graph.io);

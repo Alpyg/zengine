@@ -4,6 +4,7 @@ const z = @import("z");
 const zm = z.zmath;
 
 pub const e = @import("ecs/ecs.zig");
+pub const editor = @import("editor.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
@@ -18,7 +19,7 @@ pub fn main(init: std.process.Init) !void {
         .register(z.InputModule)
         .register(z.TransformModule)
         .register(z.RenderModule)
-        .register(z.DebugModule)
+        .register(editor)
         .register(z.CameraModule)
         .register(@This());
 

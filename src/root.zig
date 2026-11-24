@@ -27,7 +27,6 @@ pub const Without = Ecs.Without;
 
 // Engine namespaces (register with `ecs.register(T)`)
 pub const CameraModule = @import("camera.zig");
-pub const DebugModule = @import("debug.zig");
 pub const GfxModule = @import("gfx.zig");
 pub const GuiModule = @import("gui.zig");
 pub const InputModule = @import("input.zig");
@@ -55,7 +54,3 @@ pub const RenderMeshes = render.render_module.RenderMeshes;
 pub const RenderModule = render.render_module.RenderModule;
 pub const RenderPhase = render.render_module.RenderPhase;
 pub const Renderer = render.render_module.Renderer;
-
-test {
-    _ = Ecs;
-}

@@ -18,8 +18,8 @@ pub fn isFrameStarted() bool {
     return frame_started;
 }
 
-/// ImGui backend state. Initializing this resource sets up zgui, loads the UI
-/// font and creates the SDL3 GPU backend, docking enabled by default.
+/// ImGui backend state. Initializing this resource sets up zgui and the SDL3
+/// GPU backend.
 pub const Gui = struct {
     pub const RESOURCE = {};
 
@@ -28,8 +28,6 @@ pub const Gui = struct {
 
     pub fn init(ecs: *z.Ecs) Gui {
         zgui.init(ecs.allocator);
-
-        _ = zgui.io.addFontFromFile("assets/fonts/Roboto-Medium.ttf", 16.0);
 
         const gfx: *const z.Gfx = zflecs.singleton_get(ecs.world, z.Gfx).?;
 
@@ -68,8 +66,9 @@ pub const PreRender = z.System(z.Phase.pre_render, struct {
     }
 });
 
-/// System: renders the ImGui draw data into the swapchain, clearing it to dark
-/// gray first.
+/// System: draws the ImGui draw data into the swapchain. Uses `.load` so the
+/// engine does not clear or replace whatever the app already rendered; apps
+/// and demos that need a background clear own that pass themselves.
 pub const Render = z.System(z.PostRenderPhase.imgui, struct {
     pub fn run(gfx: z.Resource(z.Gfx)) void {
         if (!frame_started) return;
@@ -85,9 +84,9 @@ pub const Render = z.System(z.PostRenderPhase.imgui, struct {
                 .mip_level = 0,
                 .layer_or_depth_plane = 0,
                 .clear_color = .{ .r = 0.1, .g = 0.1, .b = 0.1, .a = 1.0 },
-                .load_op = .clear,
+                .load_op = .load,
                 .store_op = .store,
-                .cycle = true,
+                .cycle = false,
             };
             zgui.backend.prepareDrawData(cmd);
             const render_pass = zsdl.beginGPURenderPass(

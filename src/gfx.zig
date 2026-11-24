@@ -4,6 +4,7 @@
 //! `Phase.last`.
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 const zsdl = @import("zsdl");
 
@@ -51,7 +52,7 @@ pub const Gfx = struct {
         var self = Gfx{};
         self.allocator = ecs.allocator;
 
-        zsdl.init(.{ .audio = true, .video = true }) catch {
+        zsdl.init(.{ .audio = false, .video = true }) catch {
             std.debug.panic("Failed to init sdl: {any}", .{zsdl.getError().?});
         };
         errdefer zsdl.quit();
@@ -66,7 +67,12 @@ pub const Gfx = struct {
         self.device = zsdl.createGPUDevice(.{ .spirv = true }, true, null) catch {
             std.debug.panic("Failed to init Device: {s}", .{zsdl.getError().?});
         };
-        self.window = zsdl.createWindow(window_name, 1280, 720, .{ .vulkan = true }) catch {
+        self.window = zsdl.createWindow(window_name, 1280, 720, .{
+            .vulkan = true,
+            // Android is always fullscreen; desktop keeps a normal window so
+            // the same renderer can be exercised without a device.
+            .fullscreen = builtin.target.abi == .android,
+        }) catch {
             std.debug.panic("Failed to init Window: {s}", .{zsdl.getError().?});
         };
         zsdl.claimWindowForGPUDevice(self.device, self.window) catch {
@@ -110,8 +116,9 @@ pub const Gfx = struct {
 /// swapchain acquisition (e.g. minimized window) yields a zero-sized swapchain.
 pub const PreRender = z.System(z.Phase.pre_render, struct {
     pub fn run(gfx: z.Resource(*Gfx)) void {
-        gfx.cmd = zsdl.acquireGPUCommandBuffer(gfx.device) catch {
-            std.debug.panic("Could not acquire GPU Command Buffer: {s}", .{zsdl.getError().?});
+        gfx.cmd = zsdl.acquireGPUCommandBuffer(gfx.device) catch |err| {
+            std.log.err("Could not acquire GPU Command Buffer: {s}", .{@errorName(err)});
+            return;
         };
 
         zsdl.waitAndAcquireGPUSwapchainTexture(
@@ -120,8 +127,16 @@ pub const PreRender = z.System(z.Phase.pre_render, struct {
             &gfx.swapchain_texture,
             &gfx.swapchain_w,
             &gfx.swapchain_h,
-        ) catch {
-            std.debug.panic("Could not acquire swapchain: {s}", .{zsdl.getError().?});
+        ) catch |err| {
+            // Happens while the window is minimized or while an Android
+            // activity is paused; skip the frame instead of tearing down.
+            std.log.warn("Could not acquire swapchain: {s}", .{@errorName(err)});
+            zsdl.cancelGPUCommandBuffer(gfx.cmd.?) catch {};
+            gfx.cmd = null;
+            gfx.swapchain_texture = null;
+            gfx.swapchain_w = 0;
+            gfx.swapchain_h = 0;
+            return;
         };
     }
 });

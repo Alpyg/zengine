@@ -1,9 +1,36 @@
-//! Editor UI: a fullscreen dockspace with `Main` and `Tool` tabs, plus the
-//! `Viewport` window that displays the offscreen scene texture.
+//! Editor demo UI: a fullscreen dockspace with `Main` and `Tool` tabs, plus
+//! the `Viewport` window that displays the offscreen scene texture.
+//!
+//! This lives in the demo rather than the engine: zengine only exposes the
+//! ImGui backend (`GuiModule`) and never builds UI of its own.
 
-const zgui = @import("zgui");
+const z = @import("z");
+const zgui = z.zgui;
+const zsdl = z.zsdl;
 
-const z = @import("root.zig");
+/// System: clears the swapchain before the UI is drawn. The engine's ImGui
+/// render pass uses `.load`, so the demo owns the background clear.
+pub const ClearSwapchain = z.System(z.Phase.post_render, struct {
+    pub fn run(
+        gfx: z.Resource(z.Gfx),
+        renderer: z.Resource(*z.Renderer),
+    ) void {
+        const cmd = gfx.cmd orelse return;
+        const texture = gfx.swapchain_texture orelse return;
+
+        var color_target = zsdl.GPUColorTargetInfo{
+            .texture = texture,
+            .mip_level = 0,
+            .layer_or_depth_plane = 0,
+            .clear_color = renderer.clear_color,
+            .load_op = .clear,
+            .store_op = .store,
+            .cycle = true,
+        };
+        const render_pass = zsdl.beginGPURenderPass(cmd, @ptrCast(&color_target), 1, null);
+        zsdl.endGPURenderPass(render_pass);
+    }
+});
 
 /// System: toggles mouse-look on Escape and submits the editor dockspace.
 /// `Dockspace` spans the window; `Main` and `Tool` are tabs inside it, each
