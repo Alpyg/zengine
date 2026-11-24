@@ -29,6 +29,11 @@ pub const Camera = struct {
     /// Based on the vertical FOV, aspect ratio and near/far clip planes.
     view_clip: zm.Mat = undefined,
 
+    /// Optional pre-computed projection matrix (row-vector form) supplied by an
+    /// external camera provider, e.g. ARCore. When set, it replaces the
+    /// `v_fov`-based perspective projection.
+    projection_override: ?zm.Mat = null,
+
     /// Full transformation from world-space to clip-space:
     /// world_clip = world_view * view_clip
     world_clip: zm.Mat = undefined,
@@ -39,7 +44,7 @@ pub const Camera = struct {
     pub fn calculate_matrices(self: *Self, transform: *const z.GlobalTransform, aspect_ratio: f32) void {
         self.world_view = zm.inverse(transform.transform);
 
-        self.view_clip = zm.perspectiveFovRh(
+        self.view_clip = self.projection_override orelse zm.perspectiveFovRh(
             self.v_fov,
             aspect_ratio,
             self.z_near,

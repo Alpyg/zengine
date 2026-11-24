@@ -37,10 +37,11 @@ pub fn build(b: *std.Build) void {
     const shaders_path = b.option(
         []const u8,
         "shaders_path",
-        "Directory containing .slang shader sources",
+        "Directory containing zengine's .slang shader sources",
     ) orelse "src/shaders";
 
-    const shaders_mod = buildShaders(b, shaders_path, options);
+    const shader_compiler = buildShaderCompiler(b);
+    const shaders_mod = compileShaders(b, shader_compiler, shaders_path, options.target, options.optimize, "shaders");
 
     var root_imports: std.ArrayList(std.Build.Module.Import) = .empty;
     root_imports.append(b.allocator, .{ .name = "zsdl", .module = zsdl_dep.module("zsdl3") }) catch @panic("oom");
@@ -166,7 +167,7 @@ fn buildExe(
     return exe;
 }
 
-fn buildShaders(b: *std.Build, shaders_path: []const u8, options: anytype) *std.Build.Module {
+fn buildShaderCompiler(b: *std.Build) *std.Build.Step.Compile {
     const zslang_dep = b.dependency("zslang", .{
         .target = b.graph.host,
         .optimize = .ReleaseFast,
@@ -184,7 +185,19 @@ fn buildShaders(b: *std.Build, shaders_path: []const u8, options: anytype) *std.
         }),
     });
     b.getInstallStep().dependOn(&b.addInstallArtifact(compiler, .{}).step);
+    return compiler;
+}
 
+/// Compiles every `.slang` file in `shaders_path` into a module named
+/// `module_name`, resolved relative to the build passed in.
+fn compileShaders(
+    b: *std.Build,
+    compiler: *std.Build.Step.Compile,
+    shaders_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+    comptime module_name: []const u8,
+) *std.Build.Module {
     var dir = b.root.openDir(b.graph.io, shaders_path, .{ .iterate = true }) catch |err| {
         std.debug.panic("failed to open shader directory '{s}': {s}", .{ shaders_path, @errorName(err) });
     };
@@ -226,11 +239,34 @@ fn buildShaders(b: *std.Build, shaders_path: []const u8, options: anytype) *std.
             @panic("oom");
     }
 
-    const shaders_zig = files.add("shaders.zig", generated.items);
+    const shaders_zig = files.add(b.fmt("{s}.zig", .{module_name}), generated.items);
 
-    return b.addModule("shaders", .{
+    return b.addModule(module_name, .{
         .root_source_file = shaders_zig,
-        .target = options.target,
-        .optimize = options.optimize,
+        .target = target,
+        .optimize = optimize,
     });
+}
+
+/// Public build helper for consuming apps.
+///
+/// Call it from the app's `build.zig`:
+///
+/// ```zig
+/// const zengine_build = @import("zengine");
+/// const shaders = zengine_build.buildShaders(b, engine, "src/shaders", target, optimize);
+/// ```
+///
+/// `engine` is the `b.dependency("zengine", ...)` value. The returned module
+/// contains one declaration per `.slang` file in `shaders_path`, resolved
+/// relative to the app's build root.
+pub fn buildShaders(
+    b: *std.Build,
+    engine: *std.Build.Dependency,
+    shaders_path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.Optimize,
+) *std.Build.Module {
+    const compiler = engine.artifact("zslang-shaderc");
+    return compileShaders(b, compiler, shaders_path, target, optimize, "app_shaders");
 }

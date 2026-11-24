@@ -109,3 +109,26 @@ export fn zengine_module_v1() *const z.hot.ModuleDesc {
 
 The host can also scope registrations manually with `Ecs.beginModule` /
 `Ecs.endModule` and tear them down with `Ecs.deinitModule`.
+
+## App shaders
+
+Consuming apps call the `buildShaders` helper exported by zengine's
+`build.zig`. The helper compiles every `.slang` file in the given directory
+with `zslang-shaderc` and returns a normal Zig module:
+
+```zig
+const zengine_build = @import("zengine");
+const engine = b.dependency("zengine", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+const shaders = zengine_build.buildShaders(b, engine, "src/shaders", target, optimize);
+
+// Add `shaders` to the app module's imports, then in Zig code:
+const shaders = @import("shaders");
+// shaders.shader_name.spv, .vertex, .fragment, .uniform_block, ...
+```
+
+The path is resolved relative to the consuming app's build root. The engine's
+own shaders remain available to engine code as `z.shaders`.
