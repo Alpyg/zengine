@@ -27,6 +27,7 @@ pub const Without = Ecs.Without;
 
 // Engine namespaces (register with `ecs.register(T)`)
 pub const CameraModule = @import("camera.zig");
+pub const FpsModule = @import("fps.zig");
 pub const GfxModule = @import("gfx.zig");
 pub const GuiModule = @import("gui.zig");
 pub const InputModule = @import("input.zig");
@@ -35,6 +36,7 @@ pub const TransformModule = @import("transform.zig");
 
 // Components and Resources
 pub const Camera = CameraModule.Camera;
+pub const Fps = FpsModule.Fps;
 pub const Gfx = GfxModule.Gfx;
 pub const PostRenderPhase = GfxModule.PostRenderPhase;
 pub const GlobalTransform = TransformModule.GlobalTransform;

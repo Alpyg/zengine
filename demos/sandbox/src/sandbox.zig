@@ -15,6 +15,7 @@ pub fn main(init: std.process.Init) !void {
     _ = app.register(z.Phase)
         .register(z.GfxModule)
         .register(z.TimeModule)
+        .register(z.FpsModule)
         .register(z.GuiModule)
         .register(z.InputModule)
         .register(z.TransformModule)
